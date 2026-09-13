@@ -251,7 +251,7 @@
             : `<div class="poster poster-placeholder">${escapeHtml(movie.title)}</div>`
         }
         <span class="metascore ${metascoreClass(movie.metascore)}" title="${
-      movie.metascore == null ? 'No Metascore yet on Metacritic' : 'Metascore'
+      movie.metascore == null ? 'No Metascore available here yet' : 'Metascore'
     }">${movie.metascore ?? '–'}</span>
       </div>
       <div class="card-body">
@@ -308,7 +308,7 @@
     }</span>
           ${
             movie.metascore == null
-              ? '<p class="hint">No Metascore yet — Metacritic hasn\'t published one for this title (often because it\'s a very recent or upcoming release).</p>'
+              ? `<p class="hint">No Metascore available here yet — often because it's a very recent release and OMDb (our data source) hasn't synced Metacritic's latest score. <a href="${metacriticUrl}" target="_blank" rel="noopener">Check Metacritic directly</a> for the current score.</p>`
               : ''
           }
           <p class="synopsis">${escapeHtml(movie.plot || movie.overview || 'No synopsis available.')}</p>

@@ -56,5 +56,10 @@ Then open the printed local URL in your browser.
   not rentals or purchases.
 - OMDb's free tier is limited to 1,000 requests/day, which is ample for
   personal use.
-- Title matching between TMDB and OMDb is done by title + year and can
-  occasionally miss a Metascore for movies with ambiguous titles.
+- Movies are matched between TMDB and OMDb using TMDB's own IMDb id
+  (falling back to title + year only if that's unavailable), so mismatches
+  are rare.
+- OMDb's Metascore data can lag behind Metacritic's live site by days or
+  weeks for very recent releases — a title can show "no score yet" here
+  even after Metacritic has published one. The app links out to Metacritic
+  directly so you can check the current score.
