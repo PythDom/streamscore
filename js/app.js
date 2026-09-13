@@ -65,6 +65,12 @@
 
   async function enrichMetascore(movie) {
     try {
+      // Prefer an exact IMDb-id match (via TMDB's own external_ids) over
+      // fuzzy title+year matching, which trips up on subtitle differences,
+      // punctuation, and festival-vs-wide-release year mismatches.
+      if (!movie.imdbId && movie.tmdbId) {
+        movie.imdbId = await StreamScoreAPI.getImdbId(movie.tmdbId);
+      }
       const record = movie.imdbId
         ? await StreamScoreAPI.omdbLookupById(movie.imdbId)
         : await StreamScoreAPI.omdbLookupByTitle(movie.title, movie.year);
@@ -244,9 +250,9 @@
             ? `<img class="poster" src="${movie.poster}" alt="${escapeHtml(movie.title)} poster" loading="lazy" />`
             : `<div class="poster poster-placeholder">${escapeHtml(movie.title)}</div>`
         }
-        <span class="metascore ${metascoreClass(movie.metascore)}">${
-      movie.metascore ?? '–'
-    }</span>
+        <span class="metascore ${metascoreClass(movie.metascore)}" title="${
+      movie.metascore == null ? 'No Metascore yet on Metacritic' : 'Metascore'
+    }">${movie.metascore ?? '–'}</span>
       </div>
       <div class="card-body">
         <h3 class="card-title">${escapeHtml(movie.title)}</h3>
@@ -300,6 +306,11 @@
           <span class="metascore metascore-lg ${metascoreClass(movie.metascore)}">${
       movie.metascore ?? '–'
     }</span>
+          ${
+            movie.metascore == null
+              ? '<p class="hint">No Metascore yet — Metacritic hasn\'t published one for this title (often because it\'s a very recent or upcoming release).</p>'
+              : ''
+          }
           <p class="synopsis">${escapeHtml(movie.plot || movie.overview || 'No synopsis available.')}</p>
           <div class="badge-row">${
             activeBadges || '<span class="hint">Not currently streaming on Netflix, Prime Video, or Disney+ in your region.</span>'

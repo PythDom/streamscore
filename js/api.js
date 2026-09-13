@@ -97,6 +97,14 @@ const StreamScoreAPI = (() => {
     return tmdbFetch('/search/movie', { query, page, include_adult: false });
   }
 
+  // TMDB's own IMDb id for a movie, when known. Matching OMDb by this exact
+  // id is far more reliable than fuzzy title+year matching (subtitles,
+  // punctuation, and festival-vs-wide release years all trip up the latter).
+  async function getImdbId(tmdbId) {
+    const data = await tmdbFetch(`/movie/${tmdbId}/external_ids`);
+    return data.imdb_id || null;
+  }
+
   // Which of netflix/prime/disney carry this TMDB movie id, in the user's region.
   async function getStreamingBadges(tmdbId) {
     const ids = await loadProviderIds();
@@ -144,6 +152,7 @@ const StreamScoreAPI = (() => {
     loadProviderIds,
     discoverByProviders,
     searchTmdb,
+    getImdbId,
     getStreamingBadges,
     omdbLookupByTitle,
     omdbLookupById,
