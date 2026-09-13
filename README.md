@@ -1,9 +1,10 @@
 # StreamScore
 
-Search movies, browse what's streaming on Netflix / Amazon Prime Video / Disney+,
-and sort everything by Metacritic's Metascore — all from a static page with no
-backend server. Also shows each title's Rotten Tomatoes score, and lets you
-filter by genre or hide anything not currently on your selected services.
+Search movies — by title, director, or actor — browse what's streaming on
+Netflix / Amazon Prime Video / Disney+, and sort everything by Metacritic's
+Metascore or its average with Rotten Tomatoes — all from a static page with
+no backend server. Also lets you filter by genre or hide anything not
+currently on your selected services.
 
 ## How it works
 
@@ -64,3 +65,6 @@ Then open the printed local URL in your browser.
   weeks for very recent releases — a title can show "no score yet" here
   even after Metacritic has published one. The app links out to Metacritic
   directly so you can check the current score.
+- Director/actor search uses TMDB (OMDb's search only matches on movie
+  title), matching the single best-known person for the name you type and
+  showing up to their 60 most recent movie credits.

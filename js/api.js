@@ -97,6 +97,18 @@ const StreamScoreAPI = (() => {
     return tmdbFetch('/search/movie', { query, page, include_adult: false });
   }
 
+  // Best-matching person (TMDB sorts by popularity), for director/actor search.
+  async function searchPerson(query) {
+    const data = await tmdbFetch('/search/person', { query, include_adult: false });
+    return (data.results && data.results[0]) || null;
+  }
+
+  // { cast, crew } filmography for a person. Used to power director/actor
+  // search, since OMDb's search endpoint only matches on movie title.
+  async function getPersonMovieCredits(personId) {
+    return tmdbFetch(`/person/${personId}/movie_credits`);
+  }
+
   // TMDB's own IMDb id for a movie, when known. Matching OMDb by this exact
   // id is far more reliable than fuzzy title+year matching (subtitles,
   // punctuation, and festival-vs-wide release years all trip up the latter).
@@ -166,6 +178,8 @@ const StreamScoreAPI = (() => {
     loadProviderIds,
     discoverByProviders,
     searchTmdb,
+    searchPerson,
+    getPersonMovieCredits,
     getImdbId,
     getStreamingBadges,
     omdbLookupByTitle,

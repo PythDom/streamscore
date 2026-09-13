@@ -47,9 +47,26 @@ body {
 .brand-icon { width: 28px; height: 28px; }
 .brand h1 { font-size: 1.15rem; margin: 0; }
 
-.search-wrap { flex: 1; position: relative; max-width: 480px; }
+.search-wrap {
+  flex: 1;
+  position: relative;
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+#search-type {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
 #search-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 0.5rem 2rem 0.5rem 0.75rem;
   border-radius: 999px;
   border: 1px solid var(--border);

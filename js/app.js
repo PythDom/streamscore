@@ -1,6 +1,7 @@
 (() => {
   const els = {
     searchInput: document.getElementById('search-input'),
+    searchType: document.getElementById('search-type'),
     searchClear: document.getElementById('search-clear'),
     settingsBtn: document.getElementById('settings-btn'),
     settingsModal: document.getElementById('settings-modal'),
@@ -21,11 +22,12 @@
 
   const state = {
     mode: 'browse', // 'browse' | 'search'
+    searchType: 'title', // 'title' | 'director' | 'actor'
     query: '',
     page: 1,
     totalPages: 1,
     movies: [], // normalized movie objects currently rendered
-    loading: false,
+    requestSeq: 0, // bumped on every loadPage call; guards against stale responses
   };
 
   let searchDebounce = null;
@@ -168,25 +170,66 @@
     return { movies, totalPages: movies.length > 0 ? page + 1 : page };
   }
 
+  // OMDb's search only matches on movie title, so director/actor search goes
+  // through TMDB instead: find the person, then pull their filmography.
+  // Credits come back in one shot (no pagination), so this is always a
+  // single "page"; capped at 60 titles (most recent first) to keep the
+  // per-movie OMDb/TMDB enrichment calls bounded for prolific filmographies.
+  async function fetchPersonMovies(query, type) {
+    const person = await StreamScoreAPI.searchPerson(query);
+    if (!person) return { movies: [], totalPages: 0 };
+
+    const credits = await StreamScoreAPI.getPersonMovieCredits(person.id);
+    const rawList =
+      type === 'director'
+        ? (credits.crew || []).filter((c) => c.job === 'Director')
+        : credits.cast || [];
+
+    const seen = new Set();
+    const deduped = rawList.filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+    deduped.sort((a, b) => (b.release_date || '').localeCompare(a.release_date || ''));
+
+    const movies = deduped.slice(0, 60).map(normalizeFromTmdb);
+    await Promise.all(movies.map(enrichMetascore));
+    await Promise.all(movies.map(enrichStreamingBadges));
+    return { movies, totalPages: 1 };
+  }
+
   async function loadPage({ append = false } = {}) {
-    if (state.loading) return;
-    state.loading = true;
+    // A generation counter, not a busy-flag: if the user changes the search
+    // (type, text, or provider filters) while a fetch is still in flight,
+    // that older fetch's results are discarded when it resolves instead of
+    // blocking the newer request from starting.
+    const requestId = ++state.requestSeq;
     setStatus(append ? 'Loading more…' : 'Loading…');
     els.loadMore.hidden = true;
     try {
-      const { movies, totalPages } =
-        state.mode === 'search'
-          ? await fetchSearchPage(state.query, state.page)
-          : await fetchBrowsePage(state.page);
+      let movies, totalPages;
+      if (state.mode === 'search' && state.searchType === 'title') {
+        ({ movies, totalPages } = await fetchSearchPage(state.query, state.page));
+      } else if (state.mode === 'search') {
+        ({ movies, totalPages } = await fetchPersonMovies(state.query, state.searchType));
+      } else {
+        ({ movies, totalPages } = await fetchBrowsePage(state.page));
+      }
+
+      if (requestId !== state.requestSeq) return; // superseded by a newer request
 
       state.totalPages = totalPages;
       state.movies = append ? state.movies.concat(movies) : movies;
 
       if (state.movies.length === 0) {
+        const personLabel = state.searchType === 'director' ? 'director' : 'actor';
         setStatus(
-          state.mode === 'search'
-            ? `No results for "${state.query}".`
-            : 'No movies found for the selected streaming services.'
+          state.mode !== 'search'
+            ? 'No movies found for the selected streaming services.'
+            : state.searchType === 'title'
+              ? `No results for "${state.query}".`
+              : `No ${personLabel} found matching "${state.query}".`
         );
       } else {
         setStatus('');
@@ -194,10 +237,9 @@
       renderList();
       els.loadMore.hidden = state.page >= state.totalPages;
     } catch (err) {
+      if (requestId !== state.requestSeq) return; // superseded; ignore its error too
       console.error(err);
       setStatus(errorMessage(err));
-    } finally {
-      state.loading = false;
     }
   }
 
@@ -228,6 +270,14 @@
     return score >= 60 ? 'rt-fresh' : 'rt-rotten';
   }
 
+  // Mean of whichever of Metascore/Rotten Tomatoes are available; null if
+  // neither is (e.g. an unreleased title with no critic scores at all).
+  function avgScore(movie) {
+    const scores = [movie.metascore, movie.rtScore].filter((s) => s != null);
+    if (scores.length === 0) return null;
+    return scores.reduce((a, b) => a + b, 0) / scores.length;
+  }
+
   function passesFilters(movie) {
     if (els.hideUnavailable.checked) {
       const selected = selectedProviders();
@@ -252,6 +302,12 @@
         break;
       case 'year-desc':
         list.sort((a, b) => (b.year || '0') - (a.year || '0'));
+        break;
+      case 'avg-asc':
+        list.sort((a, b) => (avgScore(a) ?? -1) - (avgScore(b) ?? -1));
+        break;
+      case 'avg-desc':
+        list.sort((a, b) => (avgScore(b) ?? -1) - (avgScore(a) ?? -1));
         break;
       case 'metascore-desc':
       default:
@@ -430,6 +486,12 @@
     loadPage({ append: false });
   }
 
+  const SEARCH_PLACEHOLDERS = {
+    title: 'Search movies…',
+    director: "Search by director's name…",
+    actor: "Search by actor's name…",
+  };
+
   els.searchInput.addEventListener('input', () => {
     const value = els.searchInput.value.trim();
     els.searchClear.hidden = value.length === 0;
@@ -440,10 +502,21 @@
         state.query = '';
       } else {
         state.mode = 'search';
+        state.searchType = els.searchType.value;
         state.query = value;
       }
       resetAndLoad();
     }, 350);
+  });
+
+  els.searchType.addEventListener('change', () => {
+    els.searchInput.placeholder = SEARCH_PLACEHOLDERS[els.searchType.value];
+    const value = els.searchInput.value.trim();
+    if (value.length === 0) return;
+    state.mode = 'search';
+    state.searchType = els.searchType.value;
+    state.query = value;
+    resetAndLoad();
   });
 
   els.searchClear.addEventListener('click', () => {

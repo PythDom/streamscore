@@ -16,6 +16,11 @@
       <h1>StreamScore</h1>
     </div>
     <div class="search-wrap">
+      <select id="search-type">
+        <option value="title">Title</option>
+        <option value="director">Director</option>
+        <option value="actor">Actor</option>
+      </select>
       <input id="search-input" type="search" placeholder="Search movies…" autocomplete="off" />
       <button id="search-clear" class="icon-btn" title="Clear search" hidden>&times;</button>
     </div>
@@ -46,6 +51,8 @@
       <select id="sort-select">
         <option value="metascore-desc">Metascore ↓</option>
         <option value="metascore-asc">Metascore ↑</option>
+        <option value="avg-desc">Average score ↓</option>
+        <option value="avg-asc">Average score ↑</option>
         <option value="title-asc">Title A–Z</option>
         <option value="year-desc">Newest first</option>
       </select>
