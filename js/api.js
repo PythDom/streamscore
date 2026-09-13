@@ -145,6 +145,20 @@ const StreamScoreAPI = (() => {
     return Number.isNaN(n) ? null : n;
   }
 
+  function rottenTomatoesValue(omdbRecord) {
+    const entry = (omdbRecord && omdbRecord.Ratings) || [];
+    const rt = entry.find((r) => r.Source === 'Rotten Tomatoes');
+    if (!rt) return null;
+    const n = parseInt(rt.Value, 10);
+    return Number.isNaN(n) ? null : n;
+  }
+
+  function genresOf(omdbRecord) {
+    const raw = omdbRecord && omdbRecord.Genre;
+    if (!raw || raw === 'N/A') return [];
+    return raw.split(',').map((g) => g.trim()).filter(Boolean);
+  }
+
   return {
     getKeys,
     saveKeys,
@@ -158,5 +172,7 @@ const StreamScoreAPI = (() => {
     omdbLookupById,
     omdbSearch,
     metascoreValue,
+    rottenTomatoesValue,
+    genresOf,
   };
 })();

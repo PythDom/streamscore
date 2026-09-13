@@ -2,7 +2,8 @@
 
 Search movies, browse what's streaming on Netflix / Amazon Prime Video / Disney+,
 and sort everything by Metacritic's Metascore — all from a static page with no
-backend server.
+backend server. Also shows each title's Rotten Tomatoes score, and lets you
+filter by genre or hide anything not currently on your selected services.
 
 ## How it works
 

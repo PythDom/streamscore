@@ -9,6 +9,8 @@
     regionInput: document.getElementById('region-input'),
     saveSettings: document.getElementById('save-settings'),
     providerFilters: document.getElementById('provider-filters'),
+    hideUnavailable: document.getElementById('hide-unavailable'),
+    genreSelect: document.getElementById('genre-select'),
     sortSelect: document.getElementById('sort-select'),
     results: document.getElementById('results'),
     status: document.getElementById('status'),
@@ -28,6 +30,25 @@
 
   let searchDebounce = null;
 
+  // Static list matching OMDb/IMDb's genre vocabulary (the source of
+  // movie.genres), rather than deriving options from whatever happens to be
+  // loaded, so the dropdown doesn't reshuffle as you browse.
+  const GENRE_OPTIONS = [
+    'Action', 'Adventure', 'Animation', 'Biography', 'Comedy', 'Crime',
+    'Documentary', 'Drama', 'Family', 'Fantasy', 'History', 'Horror',
+    'Music', 'Musical', 'Mystery', 'Romance', 'Sci-Fi', 'Sport',
+    'Thriller', 'War', 'Western',
+  ];
+
+  function populateGenreOptions() {
+    for (const genre of GENRE_OPTIONS) {
+      const option = document.createElement('option');
+      option.value = genre;
+      option.textContent = genre;
+      els.genreSelect.appendChild(option);
+    }
+  }
+
   // ---- Normalization -------------------------------------------------
 
   function normalizeFromTmdb(tmdbMovie) {
@@ -41,6 +62,8 @@
         : null,
       overview: tmdbMovie.overview,
       metascore: null,
+      rtScore: null,
+      genres: [],
       plot: null,
       badges: null,
     };
@@ -56,6 +79,8 @@
       poster: item.Poster && item.Poster !== 'N/A' ? item.Poster : null,
       overview: null,
       metascore: null,
+      rtScore: null,
+      genres: [],
       plot: null,
       badges: null,
     };
@@ -76,6 +101,8 @@
         : await StreamScoreAPI.omdbLookupByTitle(movie.title, movie.year);
       if (record) {
         movie.metascore = StreamScoreAPI.metascoreValue(record);
+        movie.rtScore = StreamScoreAPI.rottenTomatoesValue(record);
+        movie.genres = StreamScoreAPI.genresOf(record);
         movie.plot = record.Plot && record.Plot !== 'N/A' ? record.Plot : movie.overview;
         movie.imdbId = movie.imdbId || record.imdbID;
         if (!movie.poster && record.Poster && record.Poster !== 'N/A') {
@@ -196,8 +223,25 @@
     return 'ms-bad';
   }
 
-  function sortedMovies() {
-    const list = state.movies.slice();
+  function rtClass(score) {
+    if (score == null) return 'rt-none';
+    return score >= 60 ? 'rt-fresh' : 'rt-rotten';
+  }
+
+  function passesFilters(movie) {
+    if (els.hideUnavailable.checked) {
+      const selected = selectedProviders();
+      const hasSelectedBadge =
+        movie.badges && selected.some((key) => movie.badges[key]);
+      if (!hasSelectedBadge) return false;
+    }
+    const genre = els.genreSelect.value;
+    if (genre && !(movie.genres || []).includes(genre)) return false;
+    return true;
+  }
+
+  function visibleMovies() {
+    const list = state.movies.filter(passesFilters);
     const mode = els.sortSelect.value;
     switch (mode) {
       case 'metascore-asc':
@@ -222,10 +266,15 @@
   }
 
   function renderList() {
-    const list = sortedMovies();
+    const list = visibleMovies();
     els.results.innerHTML = '';
     for (const movie of list) {
       els.results.appendChild(renderCard(movie));
+    }
+    if (list.length === 0 && state.movies.length > 0) {
+      setStatus('No movies match the current filters.');
+    } else if (state.movies.length > 0) {
+      setStatus('');
     }
   }
 
@@ -250,9 +299,16 @@
             ? `<img class="poster" src="${movie.poster}" alt="${escapeHtml(movie.title)} poster" loading="lazy" />`
             : `<div class="poster poster-placeholder">${escapeHtml(movie.title)}</div>`
         }
-        <span class="metascore ${metascoreClass(movie.metascore)}" title="${
+        <div class="score-stack">
+          <span class="metascore ${metascoreClass(movie.metascore)}" title="${
       movie.metascore == null ? 'No Metascore available here yet' : 'Metascore'
     }">${movie.metascore ?? '–'}</span>
+          ${
+            movie.rtScore != null
+              ? `<span class="rtscore ${rtClass(movie.rtScore)}" title="Rotten Tomatoes">🍅 ${movie.rtScore}%</span>`
+              : ''
+          }
+        </div>
       </div>
       <div class="card-body">
         <h3 class="card-title">${escapeHtml(movie.title)}</h3>
@@ -303,12 +359,26 @@
           <h2>${escapeHtml(movie.title)} <span class="detail-year">(${escapeHtml(
       movie.year || ''
     )})</span></h2>
-          <span class="metascore metascore-lg ${metascoreClass(movie.metascore)}">${
+          <div class="score-row">
+            <span class="metascore metascore-lg ${metascoreClass(movie.metascore)}">${
       movie.metascore ?? '–'
     }</span>
+            ${
+              movie.rtScore != null
+                ? `<span class="rtscore rtscore-lg ${rtClass(movie.rtScore)}" title="Rotten Tomatoes">🍅 ${movie.rtScore}%</span>`
+                : ''
+            }
+          </div>
           ${
             movie.metascore == null
               ? `<p class="hint">No Metascore available here yet — often because it's a very recent release and OMDb (our data source) hasn't synced Metacritic's latest score. <a href="${metacriticUrl}" target="_blank" rel="noopener">Check Metacritic directly</a> for the current score.</p>`
+              : ''
+          }
+          ${
+            movie.genres && movie.genres.length
+              ? `<div class="genre-row">${movie.genres
+                  .map((g) => `<span class="genre-tag">${escapeHtml(g)}</span>`)
+                  .join('')}</div>`
               : ''
           }
           <p class="synopsis">${escapeHtml(movie.plot || movie.overview || 'No synopsis available.')}</p>
@@ -384,11 +454,21 @@
     resetAndLoad();
   });
 
-  els.providerFilters.addEventListener('change', () => {
-    if (state.mode === 'browse') resetAndLoad();
+  els.providerFilters.addEventListener('change', (e) => {
+    if (e.target === els.hideUnavailable) {
+      renderList();
+      return;
+    }
+    // A netflix/prime/disney checkbox changed.
+    if (state.mode === 'browse') {
+      resetAndLoad();
+    } else {
+      renderList();
+    }
   });
 
   els.sortSelect.addEventListener('change', renderList);
+  els.genreSelect.addEventListener('change', renderList);
 
   els.loadMore.addEventListener('click', () => {
     state.page += 1;
@@ -411,6 +491,8 @@
   });
 
   // ---- Init ------------------------------------------------------
+
+  populateGenreOptions();
 
   if (!StreamScoreAPI.hasKeys()) {
     openSettings();

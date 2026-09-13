@@ -33,8 +33,15 @@
       <label class="provider-chip" data-provider="disney">
         <input type="checkbox" value="disney" checked /> Disney+
       </label>
+      <label class="provider-chip" id="hide-unavailable-chip">
+        <input type="checkbox" id="hide-unavailable" /> Only selected services
+      </label>
     </div>
     <div class="sort-wrap">
+      <label for="genre-select">Genre</label>
+      <select id="genre-select">
+        <option value="">All genres</option>
+      </select>
       <label for="sort-select">Sort</label>
       <select id="sort-select">
         <option value="metascore-desc">Metascore ↓</option>
