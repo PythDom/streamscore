@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StreamScore</title>
+  <meta name="description" content="Search movies, browse by streaming service, and sort by Metascore." />
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/icon.svg" alt="" class="brand-icon" />
+      <h1>StreamScore</h1>
+    </div>
+    <div class="search-wrap">
+      <input id="search-input" type="search" placeholder="Search movies…" autocomplete="off" />
+      <button id="search-clear" class="icon-btn" title="Clear search" hidden>&times;</button>
+    </div>
+    <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+  </header>
+
+  <nav class="filters">
+    <div class="provider-filters" id="provider-filters">
+      <label class="provider-chip" data-provider="netflix">
+        <input type="checkbox" value="netflix" checked /> Netflix
+      </label>
+      <label class="provider-chip" data-provider="prime">
+        <input type="checkbox" value="prime" checked /> Amazon Prime Video
+      </label>
+      <label class="provider-chip" data-provider="disney">
+        <input type="checkbox" value="disney" checked /> Disney+
+      </label>
+    </div>
+    <div class="sort-wrap">
+      <label for="sort-select">Sort</label>
+      <select id="sort-select">
+        <option value="metascore-desc">Metascore ↓</option>
+        <option value="metascore-asc">Metascore ↑</option>
+        <option value="title-asc">Title A–Z</option>
+        <option value="year-desc">Newest first</option>
+      </select>
+    </div>
+  </nav>
+
+  <main id="results" class="results" aria-live="polite"></main>
+
+  <div id="status" class="status" hidden></div>
+
+  <div class="load-more-wrap">
+    <button id="load-more" class="btn" hidden>Load more</button>
+  </div>
+
+  <!-- Detail modal -->
+  <div id="detail-modal" class="modal-overlay" hidden>
+    <div class="modal detail-modal">
+      <button class="modal-close" data-close>&times;</button>
+      <div id="detail-content"></div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <button class="modal-close" data-close>&times;</button>
+      <h2>Settings</h2>
+      <p class="hint">
+        StreamScore needs two free API keys. Your keys are stored only in this
+        browser (localStorage) and are never sent anywhere except directly to
+        OMDb / TMDB.
+      </p>
+      <label class="field">
+        <span>OMDb API key</span>
+        <input id="omdb-key-input" type="text" placeholder="e.g. a1b2c3d4" />
+        <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">Get a free OMDb key →</a>
+      </label>
+      <label class="field">
+        <span>TMDB API key (v3 auth)</span>
+        <input id="tmdb-key-input" type="text" placeholder="e.g. 0123456789abcdef" />
+        <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">Get a free TMDB key →</a>
+      </label>
+      <label class="field">
+        <span>Streaming region</span>
+        <input id="region-input" type="text" maxlength="2" placeholder="US" />
+        <small>Two-letter country code used for streaming availability (e.g. US, GB, CA).</small>
+      </label>
+      <button id="save-settings" class="btn btn-primary">Save</button>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
