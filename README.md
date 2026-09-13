@@ -56,8 +56,12 @@ Then open the printed local URL in your browser.
 
 - Streaming availability reflects subscription ("flatrate") access only —
   not rentals or purchases.
-- OMDb's free tier is limited to 1,000 requests/day, which is ample for
-  personal use.
+- OMDb's free tier is limited to 1,000 requests/day. Normal browsing/search
+  is well within that, but a single director/actor search can cost ~60
+  requests (2 per movie shown), so it's possible to exhaust the daily quota
+  with heavy use. When that happens, a banner at the top of the page says
+  so explicitly — Metascore/Rotten Tomatoes/synopsis data just won't load
+  until the quota resets (about 24 hours) or you switch to a different key.
 - Movies are matched between TMDB and OMDb using TMDB's own IMDb id
   (falling back to title + year only if that's unavailable), so mismatches
   are rare.
@@ -67,4 +71,6 @@ Then open the printed local URL in your browser.
   directly so you can check the current score.
 - Director/actor search uses TMDB (OMDb's search only matches on movie
   title), matching the single best-known person for the name you type and
-  showing up to their 60 most recent movie credits.
+  showing their 30 most popular movie credits (not most recent — a prolific
+  career's newest work tends to be small/festival titles Metacritic hasn't
+  scored yet, so popularity surfaces the well-known, actually-scored films).

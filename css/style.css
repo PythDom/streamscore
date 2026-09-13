@@ -125,6 +125,17 @@ body {
   color: var(--text);
 }
 
+.quota-banner {
+  margin: 0 1.25rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mixed) 18%, var(--surface));
+  border: 1px solid var(--mixed);
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
 .results {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

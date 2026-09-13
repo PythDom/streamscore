@@ -53,8 +53,22 @@ const StreamScoreAPI = (() => {
     url.searchParams.set('apikey', omdb);
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
     const res = await fetch(url);
+    // OMDb returns 401 for both a bad key and an exhausted daily quota; the
+    // JSON body (still present on a 401) is what actually distinguishes
+    // them, so parse it before deciding what to throw.
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (e) {
+      // non-JSON body; fall through to the generic error below
+    }
+    if (data && data.Error === 'Request limit reached!') {
+      const err = new Error('OMDb daily request limit reached');
+      err.code = 'OMDB_QUOTA';
+      throw err;
+    }
     if (!res.ok) throw new Error(`OMDb error ${res.status}`);
-    return res.json();
+    return data;
   }
 
   // Resolve TMDB's numeric provider ids for netflix/prime/disney in the

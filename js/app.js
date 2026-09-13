@@ -15,6 +15,7 @@
     sortSelect: document.getElementById('sort-select'),
     results: document.getElementById('results'),
     status: document.getElementById('status'),
+    quotaBanner: document.getElementById('quota-banner'),
     loadMore: document.getElementById('load-more'),
     detailModal: document.getElementById('detail-modal'),
     detailContent: document.getElementById('detail-content'),
@@ -28,6 +29,7 @@
     totalPages: 1,
     movies: [], // normalized movie objects currently rendered
     requestSeq: 0, // bumped on every loadPage call; guards against stale responses
+    omdbQuotaExceeded: false,
   };
 
   let searchDebounce = null;
@@ -112,6 +114,7 @@
         }
       }
     } catch (e) {
+      if (e && e.code === 'OMDB_QUOTA') state.omdbQuotaExceeded = true;
       // Leave metascore as null; card still renders without it.
     }
     return movie;
@@ -173,8 +176,10 @@
   // OMDb's search only matches on movie title, so director/actor search goes
   // through TMDB instead: find the person, then pull their filmography.
   // Credits come back in one shot (no pagination), so this is always a
-  // single "page"; capped at 60 titles (most recent first) to keep the
-  // per-movie OMDb/TMDB enrichment calls bounded for prolific filmographies.
+  // single "page". Capped at the 30 most popular titles: each one costs ~2
+  // OMDb calls to enrich, and OMDb's free tier only allows 1,000/day —
+  // a prolific actor's full credit list would burn a big chunk of that in
+  // one search.
   async function fetchPersonMovies(query, type) {
     const person = await StreamScoreAPI.searchPerson(query);
     if (!person) return { movies: [], totalPages: 0 };
@@ -191,9 +196,13 @@
       seen.add(item.id);
       return true;
     });
-    deduped.sort((a, b) => (b.release_date || '').localeCompare(a.release_date || ''));
+    // Sort by TMDB popularity, not recency: a prolific career's most recent
+    // credits skew toward small/festival/upcoming titles that Metacritic
+    // hasn't scored, while popularity surfaces the well-known work that
+    // actually has Metascore/Rotten Tomatoes coverage.
+    deduped.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
-    const movies = deduped.slice(0, 60).map(normalizeFromTmdb);
+    const movies = deduped.slice(0, 30).map(normalizeFromTmdb);
     await Promise.all(movies.map(enrichMetascore));
     await Promise.all(movies.map(enrichStreamingBadges));
     return { movies, totalPages: 1 };
@@ -205,6 +214,7 @@
     // that older fetch's results are discarded when it resolves instead of
     // blocking the newer request from starting.
     const requestId = ++state.requestSeq;
+    state.omdbQuotaExceeded = false;
     setStatus(append ? 'Loading more…' : 'Loading…');
     els.loadMore.hidden = true;
     try {
@@ -222,6 +232,8 @@
       state.totalPages = totalPages;
       state.movies = append ? state.movies.concat(movies) : movies;
 
+      renderList(); // may itself call setStatus() for the "no matches" case
+
       if (state.movies.length === 0) {
         const personLabel = state.searchType === 'director' ? 'director' : 'actor';
         setStatus(
@@ -231,10 +243,8 @@
               ? `No results for "${state.query}".`
               : `No ${personLabel} found matching "${state.query}".`
         );
-      } else {
-        setStatus('');
       }
-      renderList();
+      updateQuotaBanner();
       els.loadMore.hidden = state.page >= state.totalPages;
     } catch (err) {
       if (requestId !== state.requestSeq) return; // superseded; ignore its error too
@@ -254,6 +264,16 @@
   function setStatus(msg) {
     els.status.textContent = msg;
     els.status.hidden = !msg;
+  }
+
+  function updateQuotaBanner() {
+    if (state.omdbQuotaExceeded) {
+      els.quotaBanner.textContent =
+        "OMDb's free daily limit (1,000 requests) has been reached, so Metascores, Rotten Tomatoes scores, and synopses can't load right now — that's why titles below are missing scores even if they're well-known. It resets in 24 hours, or you can switch to a different OMDb key in Settings (⚙).";
+      els.quotaBanner.hidden = false;
+    } else {
+      els.quotaBanner.hidden = true;
+    }
   }
 
   // ---- Rendering ---------------------------------------------------------
