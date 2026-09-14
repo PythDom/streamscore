@@ -50,9 +50,15 @@ const StreamScoreAPI = (() => {
   function getCachedOmdb(cacheKey) {
     const entry = loadOmdbCache()[cacheKey];
     if (!entry) return null;
-    const hasScore = metascoreValue(entry.data) != null;
+    // "Complete" means both scores are present. OMDb's own Ratings array
+    // frequently has Metascore but no Rotten Tomatoes entry (a known OMDb
+    // coverage gap) — treating that as "done forever" would mean an RT
+    // score added later is never picked up, so it's re-checked like any
+    // other incomplete entry instead of being cached indefinitely.
+    const isComplete =
+      metascoreValue(entry.data) != null && rottenTomatoesValue(entry.data) != null;
     const isStale = Date.now() - entry.fetchedAt > OMDB_CACHE_STALE_MS;
-    if (!hasScore && isStale) return null;
+    if (!isComplete && isStale) return null;
     return entry.data;
   }
 

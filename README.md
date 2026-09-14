@@ -68,9 +68,9 @@ Then open the printed local URL in your browser.
   until the quota resets (about 24 hours) or you switch to a different key.
 - Every OMDb lookup is cached in `localStorage` (checked before any network
   request), so browsing the same movies again — including across sessions —
-  costs no additional OMDb requests. A title with a published score is
-  cached indefinitely; a title with no score yet is re-checked after 7 days,
-  in case Metacritic has since published one.
+  costs no additional OMDb requests. A title with both a Metascore and a
+  Rotten Tomatoes score is cached indefinitely; a title missing either one
+  is re-checked after 7 days, in case OMDb has since filled it in.
 - Movies are matched between TMDB and OMDb using TMDB's own IMDb id
   (falling back to title + year only if that's unavailable), so mismatches
   are rare.
@@ -78,6 +78,10 @@ Then open the printed local URL in your browser.
   weeks for very recent releases — a title can show "no score yet" here
   even after Metacritic has published one. The app links out to Metacritic
   directly so you can check the current score.
+- OMDb's Rotten Tomatoes coverage is separately incomplete — some movies
+  (including recent mainstream releases) have a Metascore but no Rotten
+  Tomatoes entry in OMDb's own data at all, not just a delay. The app links
+  out to Rotten Tomatoes directly for these.
 - Director/actor search uses TMDB (OMDb's search only matches on movie
   title), matching the single best-known person for the name you type and
   showing their 30 most popular movie credits (not most recent — a prolific
