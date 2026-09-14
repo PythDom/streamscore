@@ -17,6 +17,51 @@ const StreamScoreAPI = (() => {
 
   let providerIdCache = null; // { netflix: 8, prime: 119, disney: 337 }
 
+  // Local cache of OMDb responses (localStorage), so re-visiting a movie
+  // doesn't cost another request against OMDb's 1,000/day free-tier quota.
+  // Scored titles are cached indefinitely (a Metascore essentially never
+  // changes once published); titles with no score yet are re-checked after
+  // OMDB_CACHE_STALE_MS, since a score can appear later (see the README's
+  // notes on OMDb lagging Metacritic).
+  const OMDB_CACHE_KEY = 'streamscore_omdb_cache_v1';
+  const OMDB_CACHE_STALE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  function loadOmdbCache() {
+    try {
+      return JSON.parse(localStorage.getItem(OMDB_CACHE_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveOmdbCache(cache) {
+    try {
+      localStorage.setItem(OMDB_CACHE_KEY, JSON.stringify(cache));
+    } catch (e) {
+      // Storage full/unavailable; caching is a best-effort optimization,
+      // not required for correctness, so just skip persisting it.
+    }
+  }
+
+  function omdbCacheKey({ imdbId, title, year }) {
+    return imdbId ? `id:${imdbId}` : `t:${(title || '').trim().toLowerCase()}:${year || ''}`;
+  }
+
+  function getCachedOmdb(cacheKey) {
+    const entry = loadOmdbCache()[cacheKey];
+    if (!entry) return null;
+    const hasScore = metascoreValue(entry.data) != null;
+    const isStale = Date.now() - entry.fetchedAt > OMDB_CACHE_STALE_MS;
+    if (!hasScore && isStale) return null;
+    return entry.data;
+  }
+
+  function setCachedOmdb(cacheKey, data) {
+    const cache = loadOmdbCache();
+    cache[cacheKey] = { data, fetchedAt: Date.now() };
+    saveOmdbCache(cache);
+  }
+
   function getKeys() {
     return {
       omdb: localStorage.getItem('streamscore_omdb_key') || '',
@@ -148,15 +193,28 @@ const StreamScoreAPI = (() => {
 
   // Look up full OMDb details (Metascore, Plot, etc.) by title + year.
   async function omdbLookupByTitle(title, year) {
+    const cacheKey = omdbCacheKey({ title, year });
+    const cached = getCachedOmdb(cacheKey);
+    if (cached) return cached;
+
     const params = { t: title, type: 'movie' };
     if (year) params.y = year;
     const data = await omdbFetch(params);
-    return data.Response === 'True' ? data : null;
+    if (data.Response !== 'True') return null;
+    setCachedOmdb(cacheKey, data);
+    if (data.imdbID) setCachedOmdb(omdbCacheKey({ imdbId: data.imdbID }), data);
+    return data;
   }
 
   async function omdbLookupById(imdbId) {
+    const cacheKey = omdbCacheKey({ imdbId });
+    const cached = getCachedOmdb(cacheKey);
+    if (cached) return cached;
+
     const data = await omdbFetch({ i: imdbId, plot: 'full' });
-    return data.Response === 'True' ? data : null;
+    if (data.Response !== 'True') return null;
+    setCachedOmdb(cacheKey, data);
+    return data;
   }
 
   async function omdbSearch(query, page = 1) {

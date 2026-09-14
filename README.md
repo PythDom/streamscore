@@ -18,11 +18,15 @@ directly. Instead it combines two free, browser-friendly APIs:
   (Netflix / Prime Video / Disney+) currently carry it in your region. This
   data comes from JustWatch via TMDB.
 
-Each movie card also links out to Metacritic's own search page for that
-title, in case you want to read Metacritic's original write-up.
+Each movie's detail view also links out to its Metacritic and Rotten
+Tomatoes pages, in case you want to read the original write-ups (or check
+Rotten Tomatoes' score — OMDb has it too, but see the caching note below).
 
 Both APIs are called directly from the browser (no server component), and
-your API keys are stored only in your browser's `localStorage`.
+your API keys are stored only in your browser's `localStorage`. OMDb
+responses are also cached in `localStorage`, so re-visiting a title you've
+already looked up doesn't cost another request against OMDb's daily quota —
+see "Notes / limitations" below.
 
 ## Setup
 
@@ -62,6 +66,11 @@ Then open the printed local URL in your browser.
   with heavy use. When that happens, a banner at the top of the page says
   so explicitly — Metascore/Rotten Tomatoes/synopsis data just won't load
   until the quota resets (about 24 hours) or you switch to a different key.
+- Every OMDb lookup is cached in `localStorage` (checked before any network
+  request), so browsing the same movies again — including across sessions —
+  costs no additional OMDb requests. A title with a published score is
+  cached indefinitely; a title with no score yet is re-checked after 7 days,
+  in case Metacritic has since published one.
 - Movies are matched between TMDB and OMDb using TMDB's own IMDb id
   (falling back to title + year only if that's unavailable), so mismatches
   are rare.

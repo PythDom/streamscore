@@ -416,6 +416,9 @@
     const metacriticUrl = `https://www.metacritic.com/search/${encodeURIComponent(
       movie.title
     )}/`;
+    const rottenTomatoesUrl = `https://www.rottentomatoes.com/search?search=${encodeURIComponent(
+      movie.title
+    )}`;
 
     const activeBadges = movie.badges
       ? Object.entries(movie.badges)
@@ -451,6 +454,11 @@
               : ''
           }
           ${
+            movie.rtScore == null
+              ? `<p class="hint">No Rotten Tomatoes score available here yet. <a href="${rottenTomatoesUrl}" target="_blank" rel="noopener">Check Rotten Tomatoes directly</a> for the current score.</p>`
+              : ''
+          }
+          ${
             movie.genres && movie.genres.length
               ? `<div class="genre-row">${movie.genres
                   .map((g) => `<span class="genre-tag">${escapeHtml(g)}</span>`)
@@ -461,7 +469,10 @@
           <div class="badge-row">${
             activeBadges || '<span class="hint">Not currently streaming on Netflix, Prime Video, or Disney+ in your region.</span>'
           }</div>
-          <a class="metacritic-link" href="${metacriticUrl}" target="_blank" rel="noopener">View on Metacritic →</a>
+          <div class="external-links">
+            <a class="metacritic-link" href="${metacriticUrl}" target="_blank" rel="noopener">View on Metacritic →</a>
+            <a class="metacritic-link" href="${rottenTomatoesUrl}" target="_blank" rel="noopener">View on Rotten Tomatoes →</a>
+          </div>
         </div>
       </div>
     `;

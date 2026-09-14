@@ -306,4 +306,5 @@ body {
 .detail-info { flex: 1; min-width: 220px; }
 .detail-year { color: var(--text-muted); font-weight: 400; font-size: 1rem; }
 .synopsis { line-height: 1.5; }
-.metacritic-link { display: inline-block; margin-top: 1rem; font-size: 0.9rem; }
+.external-links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin-top: 1rem; }
+.metacritic-link { display: inline-block; font-size: 0.9rem; }
