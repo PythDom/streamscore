@@ -317,6 +317,12 @@
       case 'metascore-asc':
         list.sort((a, b) => (a.metascore ?? -1) - (b.metascore ?? -1));
         break;
+      case 'rtscore-desc':
+        list.sort((a, b) => (b.rtScore ?? -1) - (a.rtScore ?? -1));
+        break;
+      case 'rtscore-asc':
+        list.sort((a, b) => (a.rtScore ?? -1) - (b.rtScore ?? -1));
+        break;
       case 'title-asc':
         list.sort((a, b) => a.title.localeCompare(b.title));
         break;
