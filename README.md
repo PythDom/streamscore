@@ -3,8 +3,8 @@
 Search movies — by title, director, or actor — browse what's streaming on
 Netflix / Amazon Prime Video / Disney+, and sort everything by Metacritic's
 Metascore or its average with Rotten Tomatoes — all from a static page with
-no backend server. Also lets you filter by genre or hide anything not
-currently on your selected services.
+no backend server. Also lets you filter by genre, mark movies as "Seen" or
+"Don't want to see" right from the list, and hide either from view.
 
 ## How it works
 
@@ -58,6 +58,10 @@ Then open the printed local URL in your browser.
 
 ## Notes / limitations
 
+- "Seen" and "Don't want to see" are per-browser, stored only in your
+  `localStorage` — they aren't movie data, so they're never sent to OMDb,
+  TMDB, or anywhere else, and won't follow you to a different browser or
+  device. Clearing your browser's site data for this app clears them too.
 - Streaming availability reflects subscription ("flatrate") access only —
   not rentals or purchases.
 - OMDb's free tier is limited to 1,000 requests/day. Normal browsing/search

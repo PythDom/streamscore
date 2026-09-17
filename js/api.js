@@ -68,6 +68,42 @@ const StreamScoreAPI = (() => {
     saveOmdbCache(cache);
   }
 
+  // Per-viewer "Seen" / "Don't want to see" flags (localStorage only — this
+  // is personal watch-tracking, not movie data, so it's never sent anywhere).
+  const FLAGS_KEY = 'streamscore_flags_v1';
+
+  function loadFlags() {
+    try {
+      return JSON.parse(localStorage.getItem(FLAGS_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveFlags(flags) {
+    try {
+      localStorage.setItem(FLAGS_KEY, JSON.stringify(flags));
+    } catch (e) {
+      // Storage full/unavailable; flags just won't persist this time.
+    }
+  }
+
+  function getMovieFlags(key) {
+    const entry = loadFlags()[key];
+    return { seen: Boolean(entry && entry.seen), skip: Boolean(entry && entry.skip) };
+  }
+
+  function setMovieFlag(key, flagName, value) {
+    const flags = loadFlags();
+    const current = { ...(flags[key] || {}), [flagName]: value };
+    if (current.seen || current.skip) {
+      flags[key] = current;
+    } else {
+      delete flags[key]; // keep storage tidy once both flags are off
+    }
+    saveFlags(flags);
+  }
+
   function getKeys() {
     return {
       omdb: localStorage.getItem('streamscore_omdb_key') || '',
@@ -266,5 +302,7 @@ const StreamScoreAPI = (() => {
     metascoreValue,
     rottenTomatoesValue,
     genresOf,
+    getMovieFlags,
+    setMovieFlag,
   };
 })();

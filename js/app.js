@@ -11,6 +11,8 @@
     saveSettings: document.getElementById('save-settings'),
     providerFilters: document.getElementById('provider-filters'),
     hideUnavailable: document.getElementById('hide-unavailable'),
+    hideSeen: document.getElementById('hide-seen'),
+    hideSkip: document.getElementById('hide-skip'),
     genreSelect: document.getElementById('genre-select'),
     sortSelect: document.getElementById('sort-select'),
     results: document.getElementById('results'),
@@ -298,6 +300,13 @@
     return scores.reduce((a, b) => a + b, 0) / scores.length;
   }
 
+  // Stable per-movie key for the local "Seen" / "Don't want to see" flags —
+  // imdbId when we have it (true unique identifier), else the synthetic
+  // source-specific id assigned at normalization time.
+  function movieKey(movie) {
+    return movie.imdbId || movie.id;
+  }
+
   function passesFilters(movie) {
     if (els.hideUnavailable.checked) {
       const selected = selectedProviders();
@@ -307,6 +316,9 @@
     }
     const genre = els.genreSelect.value;
     if (genre && !(movie.genres || []).includes(genre)) return false;
+    const flags = StreamScoreAPI.getMovieFlags(movieKey(movie));
+    if (els.hideSeen.checked && flags.seen) return false;
+    if (els.hideSkip.checked && flags.skip) return false;
     return true;
   }
 
@@ -374,6 +386,11 @@
           .join('')
       : '';
 
+    const key = movieKey(movie);
+    const flags = StreamScoreAPI.getMovieFlags(key);
+    if (flags.seen) card.classList.add('is-seen');
+    if (flags.skip) card.classList.add('is-skip');
+
     card.innerHTML = `
       <div class="poster-wrap">
         ${
@@ -396,8 +413,25 @@
         <h3 class="card-title">${escapeHtml(movie.title)}</h3>
         <div class="card-year">${escapeHtml(movie.year || '')}</div>
         <div class="badge-row">${activeBadges}</div>
+        <div class="card-actions">
+          <label class="flag-toggle flag-seen">
+            <input type="checkbox" class="seen-checkbox" ${flags.seen ? 'checked' : ''} /> Seen
+          </label>
+          <label class="flag-toggle flag-skip">
+            <input type="checkbox" class="skip-checkbox" ${flags.skip ? 'checked' : ''} /> Don't want to see
+          </label>
+        </div>
       </div>
     `;
+    card.querySelector('.card-actions').addEventListener('click', (e) => e.stopPropagation());
+    card.querySelector('.seen-checkbox').addEventListener('change', (e) => {
+      StreamScoreAPI.setMovieFlag(key, 'seen', e.target.checked);
+      renderList();
+    });
+    card.querySelector('.skip-checkbox').addEventListener('change', (e) => {
+      StreamScoreAPI.setMovieFlag(key, 'skip', e.target.checked);
+      renderList();
+    });
     card.addEventListener('click', () => openDetail(movie));
     card.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') openDetail(movie);
@@ -433,6 +467,9 @@
           .join('')
       : '';
 
+    const detailKey = movieKey(movie);
+    const detailFlags = StreamScoreAPI.getMovieFlags(detailKey);
+
     els.detailContent.innerHTML = `
       <div class="detail-layout">
         ${
@@ -444,6 +481,14 @@
           <h2>${escapeHtml(movie.title)} <span class="detail-year">(${escapeHtml(
       movie.year || ''
     )})</span></h2>
+          <div class="card-actions detail-actions">
+            <label class="flag-toggle flag-seen">
+              <input type="checkbox" id="detail-seen-checkbox" ${detailFlags.seen ? 'checked' : ''} /> Seen
+            </label>
+            <label class="flag-toggle flag-skip">
+              <input type="checkbox" id="detail-skip-checkbox" ${detailFlags.skip ? 'checked' : ''} /> Don't want to see
+            </label>
+          </div>
           <div class="score-row">
             <span class="metascore metascore-lg ${metascoreClass(movie.metascore)}">${
       movie.metascore ?? '–'
@@ -482,6 +527,14 @@
         </div>
       </div>
     `;
+    document.getElementById('detail-seen-checkbox').addEventListener('change', (e) => {
+      StreamScoreAPI.setMovieFlag(detailKey, 'seen', e.target.checked);
+      renderList();
+    });
+    document.getElementById('detail-skip-checkbox').addEventListener('change', (e) => {
+      StreamScoreAPI.setMovieFlag(detailKey, 'skip', e.target.checked);
+      renderList();
+    });
   }
 
   function closeModals() {
@@ -565,7 +618,7 @@
   });
 
   els.providerFilters.addEventListener('change', (e) => {
-    if (e.target === els.hideUnavailable) {
+    if (e.target === els.hideUnavailable || e.target === els.hideSeen || e.target === els.hideSkip) {
       renderList();
       return;
     }

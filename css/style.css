@@ -247,6 +247,26 @@ body {
 .card-year { font-size: 0.78rem; color: var(--text-muted); }
 
 .badge-row { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+
+.card-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+.card-actions.detail-actions { margin: 0.5rem 0; }
+.flag-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.flag-toggle:has(input:checked) { color: var(--text); border-color: var(--accent); }
+.flag-seen:has(input:checked) { background: color-mix(in srgb, var(--good) 15%, var(--surface)); }
+.flag-skip:has(input:checked) { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+.card.is-seen .poster { opacity: 0.55; }
+.card.is-skip .poster { opacity: 0.55; filter: grayscale(1); }
 .badge {
   font-size: 0.68rem;
   padding: 0.1rem 0.4rem;
