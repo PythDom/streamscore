@@ -194,6 +194,17 @@ const StreamScoreAPI = (() => {
     });
   }
 
+  // Movies from any service (or none), most-voted first. Used when an "only
+  // rated" filter is on with no streaming service ticked: vote count is a
+  // decent proxy for "has critic scores", so pages aren't mostly unrated.
+  async function discoverMostVoted(page = 1) {
+    return tmdbFetch('/discover/movie', {
+      sort_by: 'vote_count.desc',
+      include_adult: false,
+      page,
+    });
+  }
+
   async function searchTmdb(query, page = 1) {
     return tmdbFetch('/search/movie', { query, page, include_adult: false });
   }
@@ -291,6 +302,7 @@ const StreamScoreAPI = (() => {
     hasKeys,
     loadProviderIds,
     discoverByProviders,
+    discoverMostVoted,
     searchTmdb,
     searchPerson,
     getPersonMovieCredits,

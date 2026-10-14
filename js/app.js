@@ -13,6 +13,8 @@
     hideUnavailable: document.getElementById('hide-unavailable'),
     hideSeen: document.getElementById('hide-seen'),
     hideSkip: document.getElementById('hide-skip'),
+    onlyRt: document.getElementById('only-rt'),
+    onlyMeta: document.getElementById('only-meta'),
     genreSelect: document.getElementById('genre-select'),
     sortSelect: document.getElementById('sort-select'),
     results: document.getElementById('results'),
@@ -151,16 +153,29 @@
 
   // ---- Fetch orchestration ---------------------------------------------
 
+  // Only the netflix/prime/disney checkboxes carry a value attribute; the
+  // other chips in the same container (hide/only filters) must not count.
   function selectedProviders() {
     return Array.from(
-      els.providerFilters.querySelectorAll('input[type=checkbox]:checked')
+      els.providerFilters.querySelectorAll('input[type=checkbox][value]:checked')
     ).map((cb) => cb.value);
+  }
+
+  function ratedOnlyActive() {
+    return els.onlyRt.checked || els.onlyMeta.checked;
   }
 
   async function fetchBrowsePage(page) {
     const providers = selectedProviders();
-    if (providers.length === 0) return { movies: [], totalPages: 0 };
-    const data = await StreamScoreAPI.discoverByProviders(providers, page);
+    let data;
+    if (providers.length > 0) {
+      data = await StreamScoreAPI.discoverByProviders(providers, page);
+    } else if (ratedOnlyActive()) {
+      // No service ticked: don't restrict by service at all.
+      data = await StreamScoreAPI.discoverMostVoted(page);
+    } else {
+      return { movies: [], totalPages: 0 };
+    }
     const movies = (data.results || []).map(normalizeFromTmdb);
     await Promise.all(movies.map(enrichMetascore));
     await Promise.all(movies.map(enrichStreamingBadges));
@@ -240,7 +255,7 @@
         const personLabel = state.searchType === 'director' ? 'director' : 'actor';
         setStatus(
           state.mode !== 'search'
-            ? 'No movies found for the selected streaming services.'
+            ? 'Select a streaming service, or turn on an "Only rated on…" filter, to browse movies.'
             : state.searchType === 'title'
               ? `No results for "${state.query}".`
               : `No ${personLabel} found matching "${state.query}".`
@@ -308,8 +323,9 @@
   }
 
   function passesFilters(movie) {
-    if (els.hideUnavailable.checked) {
-      const selected = selectedProviders();
+    // With no service ticked there is no service restriction to apply.
+    const selected = selectedProviders();
+    if (els.hideUnavailable.checked && selected.length > 0) {
       const hasSelectedBadge =
         movie.badges && selected.some((key) => movie.badges[key]);
       if (!hasSelectedBadge) return false;
@@ -319,6 +335,8 @@
     const flags = StreamScoreAPI.getMovieFlags(movieKey(movie));
     if (els.hideSeen.checked && flags.seen) return false;
     if (els.hideSkip.checked && flags.skip) return false;
+    if (els.onlyRt.checked && movie.rtScore == null) return false;
+    if (els.onlyMeta.checked && movie.metascore == null) return false;
     return true;
   }
 
@@ -618,8 +636,19 @@
   });
 
   els.providerFilters.addEventListener('change', (e) => {
-    if (e.target === els.hideUnavailable || e.target === els.hideSeen || e.target === els.hideSkip) {
+    const clientSideToggles = [els.hideUnavailable, els.hideSeen, els.hideSkip];
+    if (clientSideToggles.includes(e.target)) {
       renderList();
+      return;
+    }
+    if (e.target === els.onlyRt || e.target === els.onlyMeta) {
+      // With no service ticked these chips change what gets fetched; with
+      // services ticked they only narrow what's already loaded.
+      if (state.mode === 'browse' && selectedProviders().length === 0) {
+        resetAndLoad();
+      } else {
+        renderList();
+      }
       return;
     }
     // A netflix/prime/disney checkbox changed.
