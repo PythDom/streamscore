@@ -46,9 +46,11 @@ body {
 .brand { display: flex; align-items: center; gap: 0.5rem; }
 .brand-icon { width: 28px; height: 28px; }
 .brand h1 { font-size: 1.15rem; margin: 0; }
+@media (max-width: 480px) { .brand h1 { display: none; } }
 
 .search-wrap {
   flex: 1;
+  min-width: 0;
   position: relative;
   max-width: 560px;
   display: flex;
@@ -115,7 +117,7 @@ body {
   user-select: none;
 }
 
-.sort-wrap { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+.sort-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
 #sort-select,
 #genre-select {
   padding: 0.3rem 0.5rem;
