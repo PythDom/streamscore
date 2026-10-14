@@ -56,6 +56,26 @@ Then open the printed local URL in your browser.
    root folder.
 3. Your app will be live at `https://<username>.github.io/streamscore/`.
 
+## Android app
+
+`android/` is a minimal native WebView shell that loads the live GitHub
+Pages app, so web changes show up without rebuilding the APK. Its WebView
+has its own private storage, so the OMDb/TMDB keys, the OMDb cache and the
+Seen flags you enter in the app survive closing and reopening it, and are
+not wiped when you clear Chrome's browsing data.
+
+- The APK is built and signed by `.github/workflows/android.yml` (on pushes
+  that touch `android/`, or manually from the Actions tab) and published as
+  a GitHub Release (`apk-1.<run>`). Download the `.apk` from the latest
+  release and install it.
+- Install new versions over the old one. Uninstalling the app erases the
+  saved keys and Seen flags.
+- Signing needs two repository secrets, `ANDROID_KEYSTORE_B64` (the PKCS12
+  keystore, base64) and `ANDROID_KEYSTORE_PASSWORD`. Keep a backup of the
+  keystore: updates can only be installed over an APK signed with the same
+  key.
+- Links to Metacritic and Rotten Tomatoes open in the phone's browser.
+
 ## Notes / limitations
 
 - "Seen" and "Don't want to see" are per-browser, stored only in your

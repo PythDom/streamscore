@@ -1,0 +1,44 @@
+plugins {
+    id "com.android.application"
+}
+
+// Version and signing come from the GitHub Action (see .github/workflows/android.yml).
+def env = System.getenv()
+
+android {
+    namespace "io.github.pythdom.streamscore"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "io.github.pythdom.streamscore"
+        minSdk 24
+        // 34: no forced edge-to-edge (Android 15), so the web UI stays below the status bar.
+        targetSdk 34
+        versionCode((env.VERSION_CODE ?: "1") as int)
+        versionName env.VERSION_NAME ?: "1.0"
+    }
+
+    signingConfigs {
+        release {
+            if (env.KEYSTORE_FILE) {
+                storeFile file(env.KEYSTORE_FILE)
+                storeType "pkcs12"
+                storePassword env.KEYSTORE_PASSWORD
+                keyAlias env.KEY_ALIAS
+                keyPassword env.KEYSTORE_PASSWORD
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

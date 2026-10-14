@@ -1,0 +1,50 @@
+name: Build Android APK
+
+# Builds the APK (a WebView shell around the web app) and publishes it as a GitHub Release.
+# The web app itself is loaded from GitHub Pages, so there is no need to rebuild the APK when only the web app changes.
+on:
+  push:
+    branches: [master]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - name: Decode signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/streamscore.p12"
+      - name: Build release APK
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/streamscore.p12
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: streamscore
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.${{ github.run_number }}
+        run: gradle -p android assembleRelease --no-daemon
+      - name: Verify signature
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -1)/apksigner verify --print-certs "$APK" | head -3
+          cp "$APK" "StreamScore-1.${{ github.run_number }}.apk"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "apk-1.${{ github.run_number }}" "StreamScore-1.${{ github.run_number }}.apk" \
+            --title "StreamScore Android 1.${{ github.run_number }}" \
+            --notes "Android APK for StreamScore (storage separate from Chrome). Install over the previous version: your API keys and local data are kept." \
+            --latest
