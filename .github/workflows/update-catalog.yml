@@ -1,0 +1,50 @@
+name: Update catalogue
+
+# Rebuilds data/catalog-<REGION>.json (movies on Netflix / Prime Video / Disney+ with Metascore and Rotten Tomatoes).
+# OMDb's free tier allows 1,000 calls/day, so scores are filled in over several daily runs, most-voted titles first.
+on:
+  schedule:
+    - cron: "23 3 * * *"   # every day, 03:23 UTC
+  workflow_dispatch:
+    inputs:
+      omdb_budget:
+        description: "Max OMDb lookups this run (free tier: 1000/day)"
+        default: "900"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-catalog
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build catalogue
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+          REGIONS: US,BE
+          OMDB_BUDGET: ${{ inputs.omdb_budget || '900' }}
+        run: |
+          if [ -z "$TMDB_API_KEY" ] || [ -z "$OMDB_API_KEY" ]; then
+            echo "::warning::Add the TMDB_API_KEY and OMDB_API_KEY repository secrets to build the catalogue."
+            exit 0
+          fi
+          node scripts/build-catalog.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "Update catalogue"
+          git pull --rebase
+          git push
