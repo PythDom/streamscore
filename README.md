@@ -28,6 +28,41 @@ responses are also cached in `localStorage`, so re-visiting a title you've
 already looked up doesn't cost another request against OMDb's daily quota —
 see "Notes / limitations" below.
 
+## Catalogue: sorting by score across everything
+
+TMDB can only sort by popularity or vote count, never by Metascore or
+Rotten Tomatoes, so a live list can only be sorted within the pages already
+loaded. To sort by score across *every* movie, a scheduled GitHub Action
+(`.github/workflows/update-catalog.yml`, daily) runs
+`scripts/build-catalog.mjs` and commits one file per region,
+`data/catalog-US.json` and `data/catalog-BE.json`: every movie on Netflix,
+Prime Video or Disney+ in that region with at least 100 TMDB votes, together
+with its Metascore, Rotten Tomatoes score and genres.
+
+The app loads the catalogue for the region set in Settings and browses it
+directly: sorting and filtering cover the whole catalogue instantly, and
+"Load more" just reveals the next 48 movies of the sorted list (no requests,
+no reshuffling). The services you tick restrict the list; with none ticked
+you see all three. Searching (title, director, actor) still goes live to
+OMDb/TMDB, and if a region has no catalogue the app falls back to live
+paging.
+
+- **Secrets:** add `TMDB_API_KEY` and `OMDB_API_KEY` as repository secrets
+  (Settings → Secrets and variables → Actions). Ideally use a second free
+  OMDb key, so the daily build never competes with the key you use in the
+  app. Until both exist the workflow just skips with a warning.
+- **First run:** Actions → "Update catalogue" → Run workflow. OMDb's free
+  tier allows 1,000 lookups a day, so the build checks up to 900 new titles
+  a day, most-voted first, and the catalogue fills in over roughly a week to
+  ten days; a line under the filters shows how many titles have scores yet.
+  After that, each day only handles new arrivals and the occasional refresh.
+- **Regions:** change `REGIONS` in the workflow (a region only costs extra
+  lookups for titles it doesn't share with the others) and keep the
+  "Streaming region" in Settings in step. Other knobs (`MIN_VOTES`,
+  `OMDB_BUDGET`) are described at the top of the script.
+- The catalogue only contains movies on those three services; use search for
+  anything else.
+
 ## Setup
 
 1. Get a free OMDb API key: https://www.omdbapi.com/apikey.aspx (check your

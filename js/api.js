@@ -88,6 +88,23 @@ const StreamScoreAPI = (() => {
     }
   }
 
+  // The whole flags map, for filtering many movies without re-reading storage for each one.
+  function getAllFlags() {
+    return loadFlags();
+  }
+
+  // Pre-built catalogue for a region (built daily by .github/workflows/update-catalog.yml), or null if
+  // there isn't one yet. 'no-cache' revalidates instead of trusting a stale copy; a 304 is cheap.
+  async function loadCatalog(region) {
+    try {
+      const res = await fetch(`data/catalog-${encodeURIComponent(region)}.json`, { cache: 'no-cache' });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
   function getMovieFlags(key) {
     const entry = loadFlags()[key];
     return { seen: Boolean(entry && entry.seen), skip: Boolean(entry && entry.skip) };
@@ -315,6 +332,8 @@ const StreamScoreAPI = (() => {
     rottenTomatoesValue,
     genresOf,
     getMovieFlags,
+    getAllFlags,
     setMovieFlag,
+    loadCatalog,
   };
 })();

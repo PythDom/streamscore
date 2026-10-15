@@ -20,6 +20,7 @@
     results: document.getElementById('results'),
     status: document.getElementById('status'),
     quotaBanner: document.getElementById('quota-banner'),
+    catalogInfo: document.getElementById('catalog-info'),
     loadMore: document.getElementById('load-more'),
     detailModal: document.getElementById('detail-modal'),
     detailContent: document.getElementById('detail-content'),
@@ -34,7 +35,14 @@
     movies: [], // normalized movie objects currently rendered
     requestSeq: 0, // bumped on every loadPage call; guards against stale responses
     omdbQuotaExceeded: false,
+    catalog: null, // pre-built catalogue for the region (see scripts/build-catalog.mjs), or null
+    catalogMeta: null,
+    shown: 0, // how many catalogue cards are currently revealed
   };
+
+  const CATALOG_PAGE_SIZE = 48;
+  const POSTER_BASE = 'https://image.tmdb.org/t/p/w342';
+  const SERVICE_KEYS = ['netflix', 'prime', 'disney'];
 
   let searchDebounce = null;
 
@@ -91,6 +99,25 @@
       genres: [],
       plot: null,
       badges: null,
+    };
+  }
+
+  // Catalogue entries already carry scores, genres and services, so they need no per-movie requests.
+  function normalizeFromCatalog(c) {
+    const services = c.s || [];
+    return {
+      id: `tmdb-${c.id}`,
+      tmdbId: c.id,
+      imdbId: c.i || undefined,
+      title: c.t,
+      year: c.y ? String(c.y) : '',
+      poster: c.p ? POSTER_BASE + c.p : null,
+      overview: null,
+      metascore: c.m ?? null,
+      rtScore: c.r ?? null,
+      genres: c.g || [],
+      plot: null,
+      badges: Object.fromEntries(SERVICE_KEYS.map((k) => [k, services.includes(k)])),
     };
   }
 
@@ -322,72 +349,111 @@
     return movie.imdbId || movie.id;
   }
 
-  function passesFilters(movie) {
-    // With no service ticked there is no service restriction to apply.
-    const selected = selectedProviders();
-    if (els.hideUnavailable.checked && selected.length > 0) {
-      const hasSelectedBadge =
-        movie.badges && selected.some((key) => movie.badges[key]);
-      if (!hasSelectedBadge) return false;
+  // True while the list on screen is the pre-built catalogue (browsing, not searching).
+  function isCatalogMode() {
+    return state.mode === 'browse' && state.catalog !== null && state.movies === state.catalog;
+  }
+
+  // Everything that doesn't depend on the movie is read once per render, not once per movie
+  // (the catalogue holds thousands of entries).
+  function filterContext() {
+    return {
+      selected: selectedProviders(),
+      catalogMode: isCatalogMode(),
+      hideUnavailable: els.hideUnavailable.checked,
+      genre: els.genreSelect.value,
+      hideSeen: els.hideSeen.checked,
+      hideSkip: els.hideSkip.checked,
+      onlyRt: els.onlyRt.checked,
+      onlyMeta: els.onlyMeta.checked,
+      flags: els.hideSeen.checked || els.hideSkip.checked ? StreamScoreAPI.getAllFlags() : null,
+    };
+  }
+
+  function passesFilters(movie, ctx) {
+    // With no service ticked there is no service restriction to apply. In catalogue mode the ticked
+    // services themselves are the restriction; in live mode they were already applied by the fetch.
+    if (ctx.selected.length > 0 && (ctx.catalogMode || ctx.hideUnavailable)) {
+      const onSelected = movie.badges && ctx.selected.some((key) => movie.badges[key]);
+      if (!onSelected) return false;
     }
-    const genre = els.genreSelect.value;
-    if (genre && !(movie.genres || []).includes(genre)) return false;
-    const flags = StreamScoreAPI.getMovieFlags(movieKey(movie));
-    if (els.hideSeen.checked && flags.seen) return false;
-    if (els.hideSkip.checked && flags.skip) return false;
-    if (els.onlyRt.checked && movie.rtScore == null) return false;
-    if (els.onlyMeta.checked && movie.metascore == null) return false;
+    if (ctx.genre && !(movie.genres || []).includes(ctx.genre)) return false;
+    if (ctx.flags) {
+      const f = ctx.flags[movieKey(movie)] || {};
+      if (ctx.hideSeen && f.seen) return false;
+      if (ctx.hideSkip && f.skip) return false;
+    }
+    if (ctx.onlyRt && movie.rtScore == null) return false;
+    if (ctx.onlyMeta && movie.metascore == null) return false;
     return true;
   }
 
+  // Higher/lower score first; titles without a score always go last, and ties fall back to the other
+  // score, then the title, so the order is stable (many titles share a score).
+  function byScore(get, dir) {
+    return (a, b) => {
+      const x = get(a);
+      const y = get(b);
+      if ((x == null) !== (y == null)) return x == null ? 1 : -1;
+      if (x != null && x !== y) return dir * (x - y);
+      return (avgScore(b) ?? -1) - (avgScore(a) ?? -1) || a.title.localeCompare(b.title);
+    };
+  }
+
+  const COMPARATORS = {
+    'metascore-desc': byScore((m) => m.metascore, -1),
+    'metascore-asc': byScore((m) => m.metascore, 1),
+    'rtscore-desc': byScore((m) => m.rtScore, -1),
+    'rtscore-asc': byScore((m) => m.rtScore, 1),
+    'avg-desc': byScore(avgScore, -1),
+    'avg-asc': byScore(avgScore, 1),
+    'title-asc': (a, b) => a.title.localeCompare(b.title),
+    'year-desc': (a, b) => (b.year || '0') - (a.year || '0') || a.title.localeCompare(b.title),
+  };
+
   function visibleMovies() {
-    const list = state.movies.filter(passesFilters);
-    const mode = els.sortSelect.value;
-    switch (mode) {
-      case 'metascore-asc':
-        list.sort((a, b) => (a.metascore ?? -1) - (b.metascore ?? -1));
-        break;
-      case 'rtscore-desc':
-        list.sort((a, b) => (b.rtScore ?? -1) - (a.rtScore ?? -1));
-        break;
-      case 'rtscore-asc':
-        list.sort((a, b) => (a.rtScore ?? -1) - (b.rtScore ?? -1));
-        break;
-      case 'title-asc':
-        list.sort((a, b) => a.title.localeCompare(b.title));
-        break;
-      case 'year-desc':
-        list.sort((a, b) => (b.year || '0') - (a.year || '0'));
-        break;
-      case 'avg-asc':
-        list.sort((a, b) => (avgScore(a) ?? -1) - (avgScore(b) ?? -1));
-        break;
-      case 'avg-desc':
-        list.sort((a, b) => (avgScore(b) ?? -1) - (avgScore(a) ?? -1));
-        break;
-      case 'metascore-desc':
-      default:
-        list.sort((a, b) => (b.metascore ?? -1) - (a.metascore ?? -1));
-        break;
-    }
-    return list;
+    const ctx = filterContext();
+    const list = state.movies.filter((m) => passesFilters(m, ctx));
+    return list.sort(COMPARATORS[els.sortSelect.value] || COMPARATORS['metascore-desc']);
   }
 
   function badgeLabel(key) {
     return { netflix: 'Netflix', prime: 'Prime Video', disney: 'Disney+' }[key] || key;
   }
 
-  function renderList() {
-    const list = visibleMovies();
+  // Catalogue mode reveals the (already globally sorted) list CATALOG_PAGE_SIZE cards at a time; any
+  // change of sort or filter goes back to the top, except when keepShown is set (Load more, Seen toggles).
+  function renderList({ keepShown = false } = {}) {
+    const catalogMode = isCatalogMode();
+    if (catalogMode && !keepShown) state.shown = CATALOG_PAGE_SIZE;
+    const all = visibleMovies();
+    const list = catalogMode ? all.slice(0, state.shown) : all;
     els.results.innerHTML = '';
     for (const movie of list) {
       els.results.appendChild(renderCard(movie));
     }
-    if (list.length === 0 && state.movies.length > 0) {
+    if (all.length === 0 && state.movies.length > 0) {
       setStatus('No movies match the current filters.');
     } else if (state.movies.length > 0) {
       setStatus('');
     }
+    if (catalogMode) els.loadMore.hidden = all.length <= state.shown;
+    updateCatalogInfo(all.length);
+  }
+
+  function updateCatalogInfo(matching) {
+    if (!isCatalogMode()) {
+      els.catalogInfo.hidden = true;
+      return;
+    }
+    const meta = state.catalogMeta;
+    const parts = [`Catalogue ${meta.region}: ${matching} of ${meta.total} movies match`];
+    if (meta.checked < meta.total) {
+      parts.push(`scores checked for ${meta.checked} of ${meta.total}, filling in daily`);
+    }
+    if (meta.generatedAt) parts.push(`updated ${meta.generatedAt}`);
+    els.catalogInfo.textContent = parts.join(' · ');
+    els.catalogInfo.hidden = false;
   }
 
   function renderCard(movie) {
@@ -444,11 +510,11 @@
     card.querySelector('.card-actions').addEventListener('click', (e) => e.stopPropagation());
     card.querySelector('.seen-checkbox').addEventListener('change', (e) => {
       StreamScoreAPI.setMovieFlag(key, 'seen', e.target.checked);
-      renderList();
+      renderList({ keepShown: true });
     });
     card.querySelector('.skip-checkbox').addEventListener('change', (e) => {
       StreamScoreAPI.setMovieFlag(key, 'skip', e.target.checked);
-      renderList();
+      renderList({ keepShown: true });
     });
     card.addEventListener('click', () => openDetail(movie));
     card.addEventListener('keydown', (e) => {
@@ -547,11 +613,11 @@
     `;
     document.getElementById('detail-seen-checkbox').addEventListener('change', (e) => {
       StreamScoreAPI.setMovieFlag(detailKey, 'seen', e.target.checked);
-      renderList();
+      renderList({ keepShown: true });
     });
     document.getElementById('detail-skip-checkbox').addEventListener('change', (e) => {
       StreamScoreAPI.setMovieFlag(detailKey, 'skip', e.target.checked);
-      renderList();
+      renderList({ keepShown: true });
     });
   }
 
@@ -577,12 +643,44 @@
       region: els.regionInput.value,
     });
     closeModals();
-    resetAndLoad();
+    loadCatalogForRegion().then(resetAndLoad); // the region may have changed
+  }
+
+  // ---- Catalogue ---------------------------------------------------------
+
+  // The pre-built catalogue (scripts/build-catalog.mjs) lets browsing sort and filter by score across
+  // every movie at once. Without one (not built yet, or no file for this region) the live paging below
+  // still works exactly as before.
+  async function loadCatalogForRegion() {
+    state.catalog = null;
+    state.catalogMeta = null;
+    const data = await StreamScoreAPI.loadCatalog(StreamScoreAPI.getKeys().region);
+    if (!data || !Array.isArray(data.movies) || data.movies.length === 0) return;
+    state.catalog = data.movies.map(normalizeFromCatalog);
+    state.catalogMeta = {
+      region: data.region,
+      generatedAt: data.generatedAt,
+      total: data.total ?? data.movies.length,
+      checked: data.checked ?? 0,
+    };
+  }
+
+  function showCatalog() {
+    state.requestSeq++; // drop any live request still in flight
+    state.movies = state.catalog;
+    state.omdbQuotaExceeded = false;
+    updateQuotaBanner();
+    setStatus('');
+    renderList();
   }
 
   // ---- Event wiring ------------------------------------------------------
 
   function resetAndLoad() {
+    if (state.mode === 'browse' && state.catalog) {
+      showCatalog();
+      return;
+    }
     if (!StreamScoreAPI.hasKeys()) {
       setStatus('Add your OMDb and TMDB API keys in Settings (⚙) to get started.');
       els.results.innerHTML = '';
@@ -642,27 +740,32 @@
       return;
     }
     if (e.target === els.onlyRt || e.target === els.onlyMeta) {
-      // With no service ticked these chips change what gets fetched; with
-      // services ticked they only narrow what's already loaded.
-      if (state.mode === 'browse' && selectedProviders().length === 0) {
+      // Live mode only: with no service ticked these chips change what gets fetched; with services
+      // ticked (or in catalogue mode) they only narrow what's already loaded.
+      if (!isCatalogMode() && state.mode === 'browse' && selectedProviders().length === 0) {
         resetAndLoad();
       } else {
         renderList();
       }
       return;
     }
-    // A netflix/prime/disney checkbox changed.
-    if (state.mode === 'browse') {
-      resetAndLoad();
-    } else {
+    // A netflix/prime/disney checkbox changed. The catalogue filters locally; live browsing refetches.
+    if (isCatalogMode() || state.mode !== 'browse') {
       renderList();
+    } else {
+      resetAndLoad();
     }
   });
 
-  els.sortSelect.addEventListener('change', renderList);
-  els.genreSelect.addEventListener('change', renderList);
+  els.sortSelect.addEventListener('change', () => renderList());
+  els.genreSelect.addEventListener('change', () => renderList());
 
   els.loadMore.addEventListener('click', () => {
+    if (isCatalogMode()) {
+      state.shown += CATALOG_PAGE_SIZE;
+      renderList({ keepShown: true });
+      return;
+    }
     state.page += 1;
     loadPage({ append: true });
   });
@@ -689,5 +792,6 @@
   if (!StreamScoreAPI.hasKeys()) {
     openSettings();
   }
-  resetAndLoad();
+  setStatus('Loading…');
+  loadCatalogForRegion().then(resetAndLoad);
 })();
