@@ -6,6 +6,9 @@ Metascore or its average with Rotten Tomatoes — all from a static page with
 no backend server. Also lets you filter by genre, mark movies as "Seen" or
 "Don't want to see" right from the list, and hide either from view.
 
+**New here? Read the [user's guide](USER_GUIDE.md)**: what lies where, how to
+use the app, and what is saved where. This README holds the technical notes.
+
 ## How it works
 
 Metacritic has no public API, so this app doesn't scrape metacritic.com
