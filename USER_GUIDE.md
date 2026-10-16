@@ -51,8 +51,8 @@ the poster:
 | Tomato badge with a percentage | **Rotten Tomatoes** score: 60% and above is "fresh" |
 | A dash instead of a number | No score available (yet) |
 
-Click a card to open its details: synopsis, genres, both scores, the services, and links to the movie's
-Metacritic and Rotten Tomatoes search pages.
+Click a card to open its details: synopsis, genres, running time, production companies, both scores, the
+services, and links to the movie's Metacritic and Rotten Tomatoes search pages.
 
 ### Filters
 
@@ -64,6 +64,8 @@ Metacritic and Rotten Tomatoes search pages.
 | Hide "don't want to see" | Hides movies you marked that way. |
 | Only rated on Rotten Tomatoes / Metascore | Hides movies that have no such score. Tick both to keep only movies with both. |
 | Genre | Keeps one genre. Only movies whose scores have already been looked up have genres. |
+| Length | "90 min or less" or "110 min or less". Movies whose length is unknown are hidden while it is on. |
+| Company | Type part of a production company's name, such as "Pixar" or "Disney". It matches any company listed for a movie, and the suggestions offer the 150 most common ones. |
 
 ### Sorting
 **Sort** offers Metascore, Rotten Tomatoes, Average score (of the two) in both directions, Title A-Z and
@@ -89,8 +91,9 @@ search it fetches the next page of results.
 ## 4. The nightly catalogue
 
 - **What it contains**: every movie on Netflix, Prime Video or Disney+ in the US and in Belgium that has at
-  least 100 votes on TMDB, with Metascore, Rotten Tomatoes and genres. About 6,500 US titles and 4,800
-  Belgian ones.
+  least 100 votes on TMDB, with Metascore, Rotten Tomatoes, genres, running time and production companies.
+  About 6,500 US titles and 4,800 Belgian ones. Running time and companies come from TMDB, which has no
+  daily limit, so every title has them right away; only the scores arrive gradually.
 - **How scores arrive**: OMDb's free tier allows 1,000 lookups a day, so each night's build looks up at most
   900 titles, most-voted first. The first complete fill takes about nine days. A line under the filters
   tells you how far along it is ("scores checked for X of Y"). Titles still waiting simply show a dash.

@@ -238,12 +238,27 @@ const StreamScoreAPI = (() => {
     return tmdbFetch(`/person/${personId}/movie_credits`);
   }
 
+  // One TMDB call per movie gives its IMDb id, runtime and production companies, so they share this
+  // in-memory cache (failed lookups are dropped so they can be retried).
+  const detailsCache = new Map();
+  function getTmdbDetails(tmdbId) {
+    if (!detailsCache.has(tmdbId)) {
+      detailsCache.set(
+        tmdbId,
+        tmdbFetch(`/movie/${tmdbId}`, { language: 'en-US' }).catch((err) => {
+          detailsCache.delete(tmdbId);
+          throw err;
+        })
+      );
+    }
+    return detailsCache.get(tmdbId);
+  }
+
   // TMDB's own IMDb id for a movie, when known. Matching OMDb by this exact
   // id is far more reliable than fuzzy title+year matching (subtitles,
   // punctuation, and festival-vs-wide release years all trip up the latter).
   async function getImdbId(tmdbId) {
-    const data = await tmdbFetch(`/movie/${tmdbId}/external_ids`);
-    return data.imdb_id || null;
+    return (await getTmdbDetails(tmdbId)).imdb_id || null;
   }
 
   // Which of netflix/prime/disney carry this TMDB movie id, in the user's region.
@@ -313,6 +328,12 @@ const StreamScoreAPI = (() => {
     return raw.split(',').map((g) => g.trim()).filter(Boolean);
   }
 
+  // OMDb's "142 min" as a number of minutes, or null.
+  function runtimeOf(omdbRecord) {
+    const n = parseInt(omdbRecord && omdbRecord.Runtime, 10);
+    return n > 0 ? n : null;
+  }
+
   return {
     getKeys,
     saveKeys,
@@ -323,6 +344,7 @@ const StreamScoreAPI = (() => {
     searchTmdb,
     searchPerson,
     getPersonMovieCredits,
+    getTmdbDetails,
     getImdbId,
     getStreamingBadges,
     omdbLookupByTitle,
@@ -331,6 +353,7 @@ const StreamScoreAPI = (() => {
     metascoreValue,
     rottenTomatoesValue,
     genresOf,
+    runtimeOf,
     getMovieFlags,
     getAllFlags,
     setMovieFlag,

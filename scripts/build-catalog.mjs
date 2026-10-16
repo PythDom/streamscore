@@ -1,8 +1,10 @@
 // Builds data/catalog-<REGION>.json: every movie on Netflix / Prime Video / Disney+ in a region, with its
-// Metascore, Rotten Tomatoes score and genres, so the app can sort by score across the whole catalogue.
+// Metascore, Rotten Tomatoes score, genres, runtime and production companies, so the app can sort and filter
+// across the whole catalogue.
 //
 // OMDb's free tier allows 1,000 calls/day, so scores are filled in over several daily runs (most-voted titles
-// first). Progress is kept in data/scores.json, which is shared by all regions: a movie available in two
+// first). Runtime and production companies come from TMDB (no daily limit, one call per movie, together with
+// the IMDb id). Progress is kept in data/scores.json, which is shared by all regions: a movie available in two
 // regions is only looked up once.
 //
 // Env: TMDB_API_KEY, OMDB_API_KEY (required); REGIONS (default "US,BE"); OMDB_BUDGET (default 900);
@@ -22,6 +24,7 @@ const MAX_PAGES = 500; // TMDB discover never goes past page 500
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RECHECK_INCOMPLETE_DAYS = 14; // a score can appear later (OMDb lags Metacritic / Rotten Tomatoes)
 const RECHECK_COMPLETE_DAYS = 120;
+const MAX_COMPANIES = 6; // production companies kept per movie, in TMDB's order
 const TODAY = new Date().toISOString().slice(0, 10);
 
 // Same exact-name matching as the app: TMDB also lists "Netflix Kids", "... with Ads", etc.
@@ -56,7 +59,11 @@ async function tmdb(pathname, params = {}) {
   url.searchParams.set('api_key', TMDB_KEY);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetchWithRetry(url);
-  if (!res.ok) throw new Error(`TMDB ${pathname} failed with HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`TMDB ${pathname} failed with HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -157,17 +164,34 @@ function checkTier(entry) {
   return -1;
 }
 
-async function externalImdbId(tmdbId) {
-  const data = await tmdb(`/movie/${tmdbId}/external_ids`);
-  return data.imdb_id || null;
+// IMDb id, runtime (minutes) and production companies in one TMDB call.
+async function movieDetails(tmdbId) {
+  try {
+    const data = await tmdb(`/movie/${tmdbId}`, { language: 'en-US' });
+    return {
+      i: data.imdb_id || null,
+      d: data.runtime > 0 ? data.runtime : null,
+      pc: (data.production_companies || []).map((c) => c.name).filter(Boolean).slice(0, MAX_COMPANIES),
+    };
+  } catch (err) {
+    if (err.status === 404) return { i: null, d: null, pc: [] }; // listed by discover but gone from TMDB
+    throw err;
+  }
 }
 
 async function fillScores(allMovies, scores) {
-  // IMDb ids for everything first (TMDB has no daily quota), so entries keep a stable id in the app.
-  const missingIds = allMovies.filter((m) => !scores[m.id] || scores[m.id].i === undefined);
-  if (missingIds.length) console.log(`Resolving IMDb ids for ${missingIds.length} titles...`);
-  await pool(missingIds, 8, async (m) => {
-    scores[m.id] = { ...(scores[m.id] || {}), i: await externalImdbId(m.id) };
+  // Details for everything first (TMDB has no daily quota), so entries keep a stable IMDb id in the app and
+  // the runtime / company filters work across the whole catalogue. Entries without an IMDb id are retried
+  // when they come due again, in case TMDB has learned it since.
+  const needDetails = allMovies.filter((m) => {
+    const e = scores[m.id];
+    return !e || e.i === undefined || e.d === undefined || (e.i === null && checkTier(e) >= 0);
+  });
+  if (needDetails.length) console.log(`Fetching TMDB details for ${needDetails.length} titles...`);
+  await pool(needDetails, 8, async (m) => {
+    const old = scores[m.id] || {};
+    const details = await movieDetails(m.id);
+    scores[m.id] = { ...old, ...details, i: details.i ?? old.i ?? null };
   });
 
   const due = allMovies
@@ -189,7 +213,7 @@ async function fillScores(allMovies, scores) {
     try {
       const parsed = parseOmdb(await omdbById(entry.i));
       // Keep a previously known score if OMDb stops returning it.
-      scores[m.id] = { i: entry.i, m: parsed.m ?? entry.m ?? null, r: parsed.r ?? entry.r ?? null, g: parsed.g.length ? parsed.g : entry.g || [], c: TODAY };
+      scores[m.id] = { ...entry, m: parsed.m ?? entry.m ?? null, r: parsed.r ?? entry.r ?? null, g: parsed.g.length ? parsed.g : entry.g || [], c: TODAY };
     } catch (err) {
       if (err instanceof QuotaError) {
         quotaHit = true;
@@ -219,19 +243,36 @@ async function writeIfChanged(file, text) {
   return true;
 }
 
+// The scores store keeps explicit nulls ("looked up, nothing there") so they are not looked up again.
 function scoresFileText(scores) {
   const ids = Object.keys(scores).map(Number).sort((a, b) => a - b);
-  const lines = ids.map((id) => `"${id}":${compact(scores[id])}`);
+  const lines = ids.map((id) => `"${id}":${JSON.stringify(scores[id])}`);
   return `{"version":1,"movies":{\n${lines.join(',\n')}\n}}\n`;
 }
 
 async function catalogFileText(region, movies, scores, previousText) {
+  // Production company names repeat across movies, so each file carries one list of names and every movie
+  // points into it (k). Names are listed in order of first appearance by movie id, which keeps the indexes
+  // stable from one day to the next.
+  const companyNames = [];
+  const companyIndex = new Map();
+  const indexOf = (name) => {
+    if (!companyIndex.has(name)) {
+      companyIndex.set(name, companyNames.length);
+      companyNames.push(name);
+    }
+    return companyIndex.get(name);
+  };
   const list = [...movies.values()].sort((a, b) => a.id - b.id).map((m) => {
     const s = scores[m.id] || {};
-    return { id: m.id, i: s.i || undefined, t: m.t, y: m.y, p: m.p, s: SERVICE_ORDER.filter((k) => m.s.has(k)), v: m.v, m: s.m, r: s.r, g: s.g && s.g.length ? s.g : undefined, c: s.c };
+    return {
+      id: m.id, i: s.i || undefined, t: m.t, y: m.y, p: m.p, s: SERVICE_ORDER.filter((k) => m.s.has(k)), v: m.v,
+      d: s.d || undefined, k: s.pc && s.pc.length ? s.pc.map(indexOf) : undefined,
+      m: s.m, r: s.r, g: s.g && s.g.length ? s.g : undefined, c: s.c,
+    };
   });
   const checked = list.filter((m) => m.c).length;
-  const body = `"total":${list.length},"checked":${checked},"movies":[\n${list.map(compact).join(',\n')}\n]}\n`;
+  const body = `"total":${list.length},"checked":${checked},"companies":${JSON.stringify(companyNames)},"movies":[\n${list.map(compact).join(',\n')}\n]}\n`;
   // generatedAt only moves when something else changed, so unchanged days produce no commit.
   const previousBody = previousText ? previousText.slice(previousText.indexOf('"total"')) : null;
   const previousDate = previousText && (previousText.match(/"generatedAt":"([^"]+)"/) || [])[1];

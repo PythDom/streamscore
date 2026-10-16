@@ -40,7 +40,11 @@ loaded. To sort by score across *every* movie, a scheduled GitHub Action
 `scripts/build-catalog.mjs` and commits one file per region,
 `data/catalog-US.json` and `data/catalog-BE.json`: every movie on Netflix,
 Prime Video or Disney+ in that region with at least 100 TMDB votes, together
-with its Metascore, Rotten Tomatoes score and genres.
+with its Metascore, Rotten Tomatoes score, genres, running time and
+production companies. Running time and companies come from TMDB (one call per
+movie, the same one that gives the IMDb id, no daily limit) and power the
+"Length" and "Company" filters; company names are stored once per file and
+referenced by index to keep the files small.
 
 The app loads the catalogue for the region set in Settings and browses it
 directly: sorting and filtering cover the whole catalogue instantly, and

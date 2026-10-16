@@ -16,6 +16,9 @@
     onlyRt: document.getElementById('only-rt'),
     onlyMeta: document.getElementById('only-meta'),
     genreSelect: document.getElementById('genre-select'),
+    durationSelect: document.getElementById('duration-select'),
+    companyInput: document.getElementById('company-input'),
+    companyList: document.getElementById('company-list'),
     sortSelect: document.getElementById('sort-select'),
     results: document.getElementById('results'),
     status: document.getElementById('status'),
@@ -80,6 +83,8 @@
       metascore: null,
       rtScore: null,
       genres: [],
+      runtime: null,
+      companies: [],
       plot: null,
       badges: null,
     };
@@ -97,13 +102,16 @@
       metascore: null,
       rtScore: null,
       genres: [],
+      runtime: null,
+      companies: [],
       plot: null,
       badges: null,
     };
   }
 
-  // Catalogue entries already carry scores, genres and services, so they need no per-movie requests.
-  function normalizeFromCatalog(c) {
+  // Catalogue entries already carry scores, genres, services, runtime and companies (as indexes into the
+  // file's list of company names), so they need no per-movie requests.
+  function normalizeFromCatalog(c, companyNames) {
     const services = c.s || [];
     return {
       id: `tmdb-${c.id}`,
@@ -116,6 +124,8 @@
       metascore: c.m ?? null,
       rtScore: c.r ?? null,
       genres: c.g || [],
+      runtime: c.d ?? null,
+      companies: (c.k || []).map((i) => companyNames[i]).filter(Boolean),
       plot: null,
       badges: Object.fromEntries(SERVICE_KEYS.map((k) => [k, services.includes(k)])),
     };
@@ -138,6 +148,7 @@
         movie.metascore = StreamScoreAPI.metascoreValue(record);
         movie.rtScore = StreamScoreAPI.rottenTomatoesValue(record);
         movie.genres = StreamScoreAPI.genresOf(record);
+        movie.runtime = movie.runtime ?? StreamScoreAPI.runtimeOf(record); // TMDB's value wins when we have it
         movie.plot = record.Plot && record.Plot !== 'N/A' ? record.Plot : movie.overview;
         movie.imdbId = movie.imdbId || record.imdbID;
         if (!movie.poster && record.Poster && record.Poster !== 'N/A') {
@@ -178,6 +189,20 @@
     return movie;
   }
 
+  // Runtime and production companies from TMDB. For movies that came from TMDB this is the same call that
+  // already supplied the IMDb id (cached), so it costs nothing extra.
+  async function enrichDetails(movie) {
+    if (!movie.tmdbId) return movie;
+    try {
+      const details = await StreamScoreAPI.getTmdbDetails(movie.tmdbId);
+      if (details.runtime > 0) movie.runtime = details.runtime;
+      movie.companies = (details.production_companies || []).map((c) => c.name).filter(Boolean);
+    } catch (e) {
+      // The filters just won't match this movie.
+    }
+    return movie;
+  }
+
   // ---- Fetch orchestration ---------------------------------------------
 
   // Only the netflix/prime/disney checkboxes carry a value attribute; the
@@ -206,6 +231,7 @@
     const movies = (data.results || []).map(normalizeFromTmdb);
     await Promise.all(movies.map(enrichMetascore));
     await Promise.all(movies.map(enrichStreamingBadges));
+    await Promise.all(movies.map(enrichDetails));
     return { movies, totalPages: data.total_pages || 1 };
   }
 
@@ -214,6 +240,7 @@
     const movies = results.map(normalizeFromOmdbSearch);
     await Promise.all(movies.map(enrichMetascore));
     await Promise.all(movies.map(enrichStreamingBadges));
+    await Promise.all(movies.map(enrichDetails));
     return { movies, totalPages: movies.length > 0 ? page + 1 : page };
   }
 
@@ -249,6 +276,7 @@
     const movies = deduped.slice(0, 30).map(normalizeFromTmdb);
     await Promise.all(movies.map(enrichMetascore));
     await Promise.all(movies.map(enrichStreamingBadges));
+    await Promise.all(movies.map(enrichDetails));
     return { movies, totalPages: 1 };
   }
 
@@ -366,6 +394,8 @@
       hideSkip: els.hideSkip.checked,
       onlyRt: els.onlyRt.checked,
       onlyMeta: els.onlyMeta.checked,
+      maxRuntime: Number(els.durationSelect.value) || 0,
+      company: els.companyInput.value.trim().toLowerCase(),
       flags: els.hideSeen.checked || els.hideSkip.checked ? StreamScoreAPI.getAllFlags() : null,
     };
   }
@@ -378,6 +408,9 @@
       if (!onSelected) return false;
     }
     if (ctx.genre && !(movie.genres || []).includes(ctx.genre)) return false;
+    // A movie whose length or company is unknown can't satisfy a filter on it.
+    if (ctx.maxRuntime && !(movie.runtime > 0 && movie.runtime <= ctx.maxRuntime)) return false;
+    if (ctx.company && !(movie.companies || []).some((name) => name.toLowerCase().includes(ctx.company))) return false;
     if (ctx.flags) {
       const f = ctx.flags[movieKey(movie)] || {};
       if (ctx.hideSeen && f.seen) return false;
@@ -600,6 +633,14 @@
                   .join('')}</div>`
               : ''
           }
+          ${
+            movie.runtime || (movie.companies && movie.companies.length)
+              ? `<p class="meta-line">${[movie.runtime ? `${movie.runtime} min` : '', (movie.companies || []).join(', ')]
+                  .filter(Boolean)
+                  .map(escapeHtml)
+                  .join(' · ')}</p>`
+              : ''
+          }
           <p class="synopsis">${escapeHtml(movie.plot || movie.overview || 'No synopsis available.')}</p>
           <div class="badge-row">${
             activeBadges || '<span class="hint">Not currently streaming on Netflix, Prime Video, or Disney+ in your region.</span>'
@@ -654,15 +695,35 @@
   async function loadCatalogForRegion() {
     state.catalog = null;
     state.catalogMeta = null;
+    els.companyList.replaceChildren();
     const data = await StreamScoreAPI.loadCatalog(StreamScoreAPI.getKeys().region);
     if (!data || !Array.isArray(data.movies) || data.movies.length === 0) return;
-    state.catalog = data.movies.map(normalizeFromCatalog);
+    const companyNames = data.companies || [];
+    state.catalog = data.movies.map((c) => normalizeFromCatalog(c, companyNames));
     state.catalogMeta = {
       region: data.region,
       generatedAt: data.generatedAt,
       total: data.total ?? data.movies.length,
       checked: data.checked ?? 0,
     };
+    populateCompanySuggestions(state.catalog);
+  }
+
+  // The Company box matches any part of a name; the suggestions are just the 150 companies behind the
+  // most movies in the catalogue.
+  function populateCompanySuggestions(movies) {
+    const counts = new Map();
+    for (const movie of movies) {
+      for (const name of movie.companies) counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 150);
+    els.companyList.replaceChildren(
+      ...top.map(([name]) => {
+        const option = document.createElement('option');
+        option.value = name;
+        return option;
+      })
+    );
   }
 
   function showCatalog() {
@@ -759,6 +820,12 @@
 
   els.sortSelect.addEventListener('change', () => renderList());
   els.genreSelect.addEventListener('change', () => renderList());
+  els.durationSelect.addEventListener('change', () => renderList());
+  let companyDebounce = null;
+  els.companyInput.addEventListener('input', () => {
+    clearTimeout(companyDebounce);
+    companyDebounce = setTimeout(() => renderList(), 200);
+  });
 
   els.loadMore.addEventListener('click', () => {
     if (isCatalogMode()) {
