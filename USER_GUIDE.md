@@ -65,7 +65,7 @@ services, and links to the movie's Metacritic and Rotten Tomatoes search pages.
 | Only rated on Rotten Tomatoes / Metascore | Hides movies that have no such score. Tick both to keep only movies with both. |
 | Genre | Keeps one genre. Only movies whose scores have already been looked up have genres. |
 | Length | "90 min or less" or "110 min or less". Movies whose length is unknown are hidden while it is on. |
-| Company | Type part of a production company's name, such as "Pixar" or "Disney". It matches any company listed for a movie, and the suggestions offer the 150 most common ones. |
+| Company | Type part of a production company's name, such as "Pixar" or "Disney", to keep movies from a matching company. The suggestions list the 300 most common companies, A to Z. |
 
 ### Sorting
 **Sort** offers Metascore, Rotten Tomatoes, Average score (of the two) in both directions, Title A-Z and
@@ -81,6 +81,9 @@ Use the small menu left of the search box to choose what you search for:
 
 - **Title**: searches OMDb for any movie, on the services or not. "Load more" fetches the next results.
 - **Director** or **Actor**: finds the best-matching person (TMDB) and lists their 30 most popular movies.
+- **Company**: finds the movies of every production company whose name contains what you type, such as
+  "Pixar" or "Disney", most-voted first. "Load more" fetches further ones. The company suggestions (A to Z)
+  appear as you type.
 
 Clear the search with the x to return to the catalogue.
 

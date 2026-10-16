@@ -1,6 +1,6 @@
 # StreamScore
 
-Search movies — by title, director, or actor — browse what's streaming on
+Search movies — by title, director, actor, or production company — browse what's streaming on
 Netflix / Amazon Prime Video / Disney+, and sort everything by Metacritic's
 Metascore or its average with Rotten Tomatoes — all from a static page with
 no backend server. Also lets you filter by genre, mark movies as "Seen" or
@@ -50,7 +50,7 @@ The app loads the catalogue for the region set in Settings and browses it
 directly: sorting and filtering cover the whole catalogue instantly, and
 "Load more" just reveals the next 48 movies of the sorted list (no requests,
 no reshuffling). The services you tick restrict the list; with none ticked
-you see all three. Searching (title, director, actor) still goes live to
+you see all three. Searching (title, director, actor, company) still goes live to
 OMDb/TMDB, and if a region has no catalogue the app falls back to live
 paging.
 

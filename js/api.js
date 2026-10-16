@@ -232,6 +232,37 @@ const StreamScoreAPI = (() => {
     return (data.results && data.results[0]) || null;
   }
 
+  // Production companies whose name contains the query, exact names first. TMDB's own ranking is poor (the
+  // studio you mean can sit on page 2-3 behind regional offshoots, and "Disney" puts a company with no
+  // movies first), so read up to 5 pages and keep every name that contains the query.
+  async function searchCompanies(query) {
+    const q = query.trim().toLowerCase();
+    const first = await tmdbFetch('/search/company', { query, page: 1 });
+    const pages = Math.min(first.total_pages || 1, 5);
+    const rest = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, i) => tmdbFetch('/search/company', { query, page: i + 2 }))
+    );
+    const rank = (name) => {
+      const n = name.toLowerCase();
+      return n === q ? 0 : n.startsWith(q) ? 1 : n.includes(q) ? 2 : 3;
+    };
+    return [first, ...rest]
+      .flatMap((r) => r.results || [])
+      .filter((c) => rank(c.name) < 3)
+      .sort((a, b) => rank(a.name) - rank(b.name))
+      .slice(0, 60);
+  }
+
+  // Movies by any of the given companies, most-voted first (those are the ones that have critic scores).
+  async function discoverByCompanies(companyIds, page = 1) {
+    return tmdbFetch('/discover/movie', {
+      with_companies: companyIds.join('|'),
+      sort_by: 'vote_count.desc',
+      include_adult: false,
+      page,
+    });
+  }
+
   // { cast, crew } filmography for a person. Used to power director/actor
   // search, since OMDb's search endpoint only matches on movie title.
   async function getPersonMovieCredits(personId) {
@@ -343,6 +374,8 @@ const StreamScoreAPI = (() => {
     discoverMostVoted,
     searchTmdb,
     searchPerson,
+    searchCompanies,
+    discoverByCompanies,
     getPersonMovieCredits,
     getTmdbDetails,
     getImdbId,

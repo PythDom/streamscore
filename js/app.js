@@ -280,6 +280,25 @@
     return { movies, totalPages: 1 };
   }
 
+  // Company search: every production company whose name contains the text, resolved once per query, then
+  // their movies page by page (most-voted first). Unlike director/actor this keeps paging, so "Load more"
+  // works.
+  const companyIdsByQuery = new Map();
+  async function fetchCompanyPage(query, page) {
+    let ids = companyIdsByQuery.get(query);
+    if (!ids) {
+      ids = (await StreamScoreAPI.searchCompanies(query)).map((c) => c.id);
+      companyIdsByQuery.set(query, ids);
+    }
+    if (ids.length === 0) return { movies: [], totalPages: 0 };
+    const data = await StreamScoreAPI.discoverByCompanies(ids, page);
+    const movies = (data.results || []).map(normalizeFromTmdb);
+    await Promise.all(movies.map(enrichMetascore));
+    await Promise.all(movies.map(enrichStreamingBadges));
+    await Promise.all(movies.map(enrichDetails));
+    return { movies, totalPages: data.total_pages || 1 };
+  }
+
   async function loadPage({ append = false } = {}) {
     // A generation counter, not a busy-flag: if the user changes the search
     // (type, text, or provider filters) while a fetch is still in flight,
@@ -293,6 +312,8 @@
       let movies, totalPages;
       if (state.mode === 'search' && state.searchType === 'title') {
         ({ movies, totalPages } = await fetchSearchPage(state.query, state.page));
+      } else if (state.mode === 'search' && state.searchType === 'company') {
+        ({ movies, totalPages } = await fetchCompanyPage(state.query, state.page));
       } else if (state.mode === 'search') {
         ({ movies, totalPages } = await fetchPersonMovies(state.query, state.searchType));
       } else {
@@ -313,7 +334,9 @@
             ? 'Select a streaming service, or turn on an "Only rated on…" filter, to browse movies.'
             : state.searchType === 'title'
               ? `No results for "${state.query}".`
-              : `No ${personLabel} found matching "${state.query}".`
+              : state.searchType === 'company'
+                ? `No movies found for a production company matching "${state.query}".`
+                : `No ${personLabel} found matching "${state.query}".`
         );
       }
       updateQuotaBanner();
@@ -709,16 +732,20 @@
     populateCompanySuggestions(state.catalog);
   }
 
-  // The Company box matches any part of a name; the suggestions are just the 150 companies behind the
-  // most movies in the catalogue.
+  // The Company boxes match any part of a name; the suggestions are the 300 companies behind the most
+  // movies in the catalogue, listed A to Z (ignoring case and accents).
   function populateCompanySuggestions(movies) {
     const counts = new Map();
     for (const movie of movies) {
       for (const name of movie.companies) counts.set(name, (counts.get(name) || 0) + 1);
     }
-    const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 150);
+    const names = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 300)
+      .map(([name]) => name)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     els.companyList.replaceChildren(
-      ...top.map(([name]) => {
+      ...names.map((name) => {
         const option = document.createElement('option');
         option.value = name;
         return option;
@@ -757,7 +784,16 @@
     title: 'Search movies…',
     director: "Search by director's name…",
     actor: "Search by actor's name…",
+    company: 'Search by production company…',
   };
+
+  // The company suggestions (from the catalogue) are offered in the top search box only for company search.
+  function applySearchTypeUi() {
+    const type = els.searchType.value;
+    els.searchInput.placeholder = SEARCH_PLACEHOLDERS[type];
+    if (type === 'company') els.searchInput.setAttribute('list', 'company-list');
+    else els.searchInput.removeAttribute('list');
+  }
 
   els.searchInput.addEventListener('input', () => {
     const value = els.searchInput.value.trim();
@@ -777,7 +813,7 @@
   });
 
   els.searchType.addEventListener('change', () => {
-    els.searchInput.placeholder = SEARCH_PLACEHOLDERS[els.searchType.value];
+    applySearchTypeUi();
     const value = els.searchInput.value.trim();
     if (value.length === 0) return;
     state.mode = 'search';
